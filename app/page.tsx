@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { Patient, Transaction, Drug, DrugBalance } from '@/types';
-import { addDays, calculateDates, checkStatus } from '@/lib/dateUtils';
+import { checkStatus } from '@/lib/dateUtils';
 
 function StatCard({
   label,

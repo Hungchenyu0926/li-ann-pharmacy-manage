@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import type { Patient, Drug, Transaction } from '@/types';
+import { normalizeDate } from '@/lib/dateUtils';
 
 const SHEET_ID = process.env.SHEET_ID!;
 
@@ -129,9 +130,9 @@ export async function getPatients(): Promise<Patient[]> {
     rowIndex: i + 2,
     name: row[0] ?? '',
     phone: row[1] ?? '',
-    dob: row[2] ?? '',
+    dob: normalizeDate(row[2] ?? ''),
     gender: row[3] ?? '',
-    firstPickupDate: row[4] ?? '',
+    firstPickupDate: normalizeDate(row[4] ?? ''),
     prescriptionDays: parseInt(row[5] ?? '28', 10),
     district: row[6] ?? '',
     pickedSecond: row[7] === 'TRUE' || row[7] === true.toString(),
