@@ -31,8 +31,9 @@ async function getTabId(tabName: string): Promise<number> {
   const sheets = await getSheetsClient();
   const res = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
   const tab = res.data.sheets?.find(s => s.properties?.title === tabName);
-  if (!tab?.properties?.sheetId) throw new Error(`找不到分頁：${tabName}`);
-  return tab.properties.sheetId;
+  const sheetId = tab?.properties?.sheetId;
+  if (sheetId == null) throw new Error(`找不到分頁：${tabName}`);
+  return sheetId;
 }
 
 // ===== 讀取範圍 =====
