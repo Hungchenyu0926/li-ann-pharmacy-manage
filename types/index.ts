@@ -1,25 +1,24 @@
-// ===== 慢箋個案 =====
+// ===== 慢箋個案（對應試算表欄位 A~J）=====
 export interface Patient {
-  rowIndex: number;        // Google Sheets 列號（從 2 開始，1 = 標題列）
-  name: string;            // 個案姓名
-  phone: string;           // 個案電話
-  dob: string;             // 出生年月日 (YYYY-MM-DD)
-  gender: string;          // 性別
-  firstPickupDate: string; // 第一次領藥日 (YYYY-MM-DD)
-  prescriptionDays: number;// 處方天數
-  district: string;        // 居住里別
-  pickedSecond: boolean;   // 已領第二次
-  pickedThird: boolean;    // 已領第三次
-  completed: boolean;      // 已結案
+  rowIndex: number;        // Google Sheets 列號
+  name: string;            // A: 個案姓名
+  phone: string;           // B: 電話
+  dob: string;             // C: 出生年月日 (YYYY-MM-DD)
+  district: string;        // D: 居住里別
+  firstPickupDate: string; // E: 第一次領藥日 (YYYY-MM-DD)
+  pickedSecond: boolean;   // F: 已領第二次
+  pickedThird: boolean;    // G: 已領第三次
+  returnVisit: string;     // H: 回診日（手動填入，YYYY-MM-DD）
+  completed: boolean;      // I: 已結案
+  lineId: string;          // J: LINE_ID
 }
 
-// 計算出的日期欄位（不存 Google Sheets，前端計算）
+// 計算出的日期欄位（前端計算，不存試算表）
 export interface PatientWithDates extends Patient {
   secondStart: string;
   secondEnd: string;
   thirdStart: string;
   thirdEnd: string;
-  returnVisit: string;
   status: string;
   age: number;
 }

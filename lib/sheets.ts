@@ -126,34 +126,36 @@ export async function ensureDrugTabs() {
 
 export async function getPatients(): Promise<Patient[]> {
   const rows = await readRange(`${TAB_PATIENTS}!A2:J10000`);
-  return rows.map((row, i) => ({
-    rowIndex: i + 2,
-    name: row[0] ?? '',
-    phone: row[1] ?? '',
-    dob: normalizeDate(row[2] ?? ''),
-    gender: row[3] ?? '',
-    firstPickupDate: normalizeDate(row[4] ?? ''),
-    prescriptionDays: parseInt(row[5] ?? '28', 10),
-    district: row[6] ?? '',
-    pickedSecond: row[7] === 'TRUE' || row[7] === true.toString(),
-    pickedThird: row[8] === 'TRUE' || row[8] === true.toString(),
-    completed: row[9] === 'TRUE' || row[9] === true.toString(),
-  }));
+  return rows
+    .filter(row => row[0]) // 跳過空列
+    .map((row, i) => ({
+      rowIndex: i + 2,
+      name: row[0] ?? '',
+      phone: row[1] ?? '',
+      dob: normalizeDate(row[2] ?? ''),
+      district: row[3] ?? '',
+      firstPickupDate: normalizeDate(row[4] ?? ''),
+      pickedSecond: row[5] === 'TRUE' || row[5] === 'true',
+      pickedThird: row[6] === 'TRUE' || row[6] === 'true',
+      returnVisit: normalizeDate(row[7] ?? ''),
+      completed: row[8] === 'TRUE' || row[8] === 'true',
+      lineId: row[9] ?? '',
+    }));
 }
 
 export async function addPatient(p: Omit<Patient, 'rowIndex'>) {
   await appendRow(TAB_PATIENTS, [
-    p.name, p.phone, p.dob, p.gender,
-    p.firstPickupDate, p.prescriptionDays, p.district,
-    p.pickedSecond, p.pickedThird, p.completed,
+    p.name, p.phone, p.dob, p.district,
+    p.firstPickupDate, p.pickedSecond, p.pickedThird,
+    p.returnVisit, p.completed, p.lineId,
   ]);
 }
 
 export async function updatePatient(p: Patient) {
   await updateRow(TAB_PATIENTS, p.rowIndex, [
-    p.name, p.phone, p.dob, p.gender,
-    p.firstPickupDate, p.prescriptionDays, p.district,
-    p.pickedSecond, p.pickedThird, p.completed,
+    p.name, p.phone, p.dob, p.district,
+    p.firstPickupDate, p.pickedSecond, p.pickedThird,
+    p.returnVisit, p.completed, p.lineId,
   ]);
 }
 

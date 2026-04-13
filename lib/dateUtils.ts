@@ -51,11 +51,12 @@ export function calculateAge(dob: string): number {
   return age;
 }
 
-export function calculateDates(firstPickupDate: string, prescriptionDays: number) {
+// prescriptionDays 預設 28 天（試算表無此欄位）
+export function calculateDates(firstPickupDate: string, prescriptionDays = 28) {
   const normalized = normalizeDate(firstPickupDate);
   const start = new Date(normalized);
 
-  // 日期無效時回傳空字串，讓 checkStatus 顯示「資料不全」
+  // 日期無效時回傳空字串
   if (isNaN(start.getTime())) {
     return { secondStart: '', secondEnd: '', thirdStart: '', thirdEnd: '', returnVisit: '' };
   }
@@ -69,7 +70,7 @@ export function calculateDates(firstPickupDate: string, prescriptionDays: number
   const thirdEnd = endCycle2;
 
   const endCycle3 = addDays(endCycle2, prescriptionDays);
-  const returnVisit = addDays(endCycle3, 1);
+  const returnVisit = addDays(endCycle3, 1); // 第三週期結束後隔天
 
   return {
     secondStart: formatDate(secondStart),
@@ -88,7 +89,7 @@ export function checkStatus(patient: Patient): string {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const dates = calculateDates(patient.firstPickupDate, patient.prescriptionDays);
+    const dates = calculateDates(patient.firstPickupDate);
     if (!dates.secondStart) return '資料不全';
 
     const toDate = (s: string) => {
@@ -118,8 +119,10 @@ export function checkStatus(patient: Patient): string {
     }
 
     if (patient.pickedSecond && patient.pickedThird) {
-      const reviewRemind = addDays(toDate(dates.returnVisit), -7);
-      if (today >= reviewRemind) return '🏥 建議準備回診';
+      if (dates.returnVisit) {
+        const reviewRemind = addDays(toDate(dates.returnVisit), -7);
+        if (today >= reviewRemind) return '🏥 建議準備回診';
+      }
       return '✅ 完成領藥';
     }
 
