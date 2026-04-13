@@ -10,17 +10,20 @@ function computeBalances(drugs: Drug[], transactions: Transaction[]): DrugBalanc
 
   drugs.forEach(d => {
     const key = `${d.name}||${d.dosage}||${d.brand}`;
-    map[key] = { drugName: d.name, dosage: d.dosage, brand: d.brand, balance: 0, totalLent: 0, totalReturned: 0 };
+    map[key] = { drugName: d.name, dosage: d.dosage, brand: d.brand, balance: 0, totalLent: 0, totalReturned: 0, totalBorrowed: 0 };
   });
 
   transactions.forEach(t => {
     const key = `${t.drugName}||${t.dosage}||${t.brand}`;
     if (!map[key]) {
-      map[key] = { drugName: t.drugName, dosage: t.dosage, brand: t.brand, balance: 0, totalLent: 0, totalReturned: 0 };
+      map[key] = { drugName: t.drugName, dosage: t.dosage, brand: t.brand, balance: 0, totalLent: 0, totalReturned: 0, totalBorrowed: 0 };
     }
     if (t.type === '借出') {
       map[key].balance -= t.quantity;
       map[key].totalLent += t.quantity;
+    } else if (t.type === '借入') {
+      map[key].balance += t.quantity;
+      map[key].totalBorrowed += t.quantity;
     } else {
       map[key].balance += t.quantity;
       map[key].totalReturned += t.quantity;
@@ -47,7 +50,7 @@ export default function DrugLendingPage() {
     drugName: '',
     dosage: '',
     brand: '',
-    type: '借出' as '借出' | '歸還',
+    type: '借出' as '借出' | '歸還' | '借入',
     person: '',
     quantity: 1,
     expectedReturn: '',
@@ -181,17 +184,17 @@ export default function DrugLendingPage() {
           <div>
             <label>類型 *</label>
             <div className="flex gap-2">
-              {(['借出', '歸還'] as const).map(t => (
-                <button key={t} type="button"
-                  onClick={() => setTxForm(f => ({ ...f, type: t }))}
+              {([
+                { val: '借出', label: '▼ 借出', active: 'bg-orange-100 text-orange-700 border-orange-300' },
+                { val: '借入', label: '▲ 借入', active: 'bg-blue-100 text-blue-700 border-blue-300' },
+                { val: '歸還', label: '↩ 歸還', active: 'bg-green-100 text-green-700 border-green-300' },
+              ] as const).map(({ val, label, active }) => (
+                <button key={val} type="button"
+                  onClick={() => setTxForm(f => ({ ...f, type: val }))}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    txForm.type === t
-                      ? t === '借出'
-                        ? 'bg-orange-100 text-orange-700 border-orange-300'
-                        : 'bg-green-100 text-green-700 border-green-300'
-                      : 'bg-white text-[#4e7397] border-[#e7edf3] hover:bg-[#f8fafc]'
+                    txForm.type === val ? active : 'bg-white text-[#4e7397] border-[#e7edf3] hover:bg-[#f8fafc]'
                   }`}>
-                  {t === '借出' ? '▼ 借出' : '▲ 歸還'}
+                  {label}
                 </button>
               ))}
             </div>
@@ -228,8 +231,14 @@ export default function DrugLendingPage() {
           </div>
 
           <div>
-            <label>{txForm.type === '借出' ? '借方（誰借走）*' : '歸還者（誰還回）*'}</label>
-            <input type="text" required placeholder="姓名或藥局名" value={txForm.person}
+            <label>
+              {txForm.type === '借出' ? '借方（誰借走）*' :
+               txForm.type === '借入' ? '向誰借（藥廠/藥局）*' :
+               '歸還者（誰還回）*'}
+            </label>
+            <input type="text" required
+              placeholder={txForm.type === '借入' ? '藥廠或藥局名稱' : '姓名或藥局名'}
+              value={txForm.person}
               onChange={e => setTxForm(f => ({ ...f, person: e.target.value }))} />
           </div>
 
@@ -296,6 +305,7 @@ export default function DrugLendingPage() {
                   <th>劑量</th>
                   <th>廠牌</th>
                   <th>借出合計</th>
+                  <th>借入合計</th>
                   <th>歸還合計</th>
                   <th>目前餘量</th>
                   <th>狀態</th>
@@ -304,7 +314,7 @@ export default function DrugLendingPage() {
               <tbody>
                 {balances.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-12 text-[#94a3b8]">
+                    <td colSpan={8} className="text-center py-12 text-[#94a3b8]">
                       尚無資料，請先在「藥品清單」新增藥品，再記錄借還
                     </td>
                   </tr>
@@ -320,8 +330,13 @@ export default function DrugLendingPage() {
                         )}
                       </td>
                       <td>
+                        {b.totalBorrowed > 0 && (
+                          <span className="badge bg-blue-50 text-blue-600">▲ {b.totalBorrowed}</span>
+                        )}
+                      </td>
+                      <td>
                         {b.totalReturned > 0 && (
-                          <span className="badge bg-green-50 text-green-600">▲ {b.totalReturned}</span>
+                          <span className="badge bg-green-50 text-green-600">↩ {b.totalReturned}</span>
                         )}
                       </td>
                       <td className="font-bold">
@@ -379,13 +394,21 @@ export default function DrugLendingPage() {
                       <td>{t.dosage}</td>
                       <td>{t.brand}</td>
                       <td>
-                        <span className={`badge ${t.type === '借出' ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'}`}>
-                          {t.type === '借出' ? '▼ 借出' : '▲ 歸還'}
+                        <span className={`badge ${
+                          t.type === '借出' ? 'bg-orange-50 text-orange-600' :
+                          t.type === '借入' ? 'bg-blue-50 text-blue-600' :
+                          'bg-green-50 text-green-600'
+                        }`}>
+                          {t.type === '借出' ? '▼ 借出' : t.type === '借入' ? '▲ 借入' : '↩ 歸還'}
                         </span>
                       </td>
                       <td>{t.person}</td>
                       <td className="font-bold">
-                        <span className={t.type === '借出' ? 'text-orange-600' : 'text-green-600'}>
+                        <span className={
+                          t.type === '借出' ? 'text-orange-600' :
+                          t.type === '借入' ? 'text-blue-600' :
+                          'text-green-600'
+                        }>
                           {t.type === '借出' ? '-' : '+'}{t.quantity}
                         </span>
                       </td>

@@ -33,7 +33,7 @@ export interface Drug {
 }
 
 // ===== 借還紀錄 =====
-export type TransactionType = '借出' | '歸還';
+export type TransactionType = '借出' | '歸還' | '借入';
 
 export interface Transaction {
   rowIndex: number;      // Google Sheets 列號
@@ -41,8 +41,8 @@ export interface Transaction {
   drugName: string;      // 藥品名稱
   dosage: string;        // 劑量
   brand: string;         // 廠牌
-  type: TransactionType; // 借出 or 歸還
-  person: string;        // 借方 / 歸還者
+  type: TransactionType; // 借出 / 歸還 / 借入
+  person: string;        // 借出=借方，歸還=歸還者，借入=向誰借
   quantity: number;      // 數量（正數）
   expectedReturn: string;// 預計歸還日（借出時填）
   note: string;          // 備注
@@ -53,9 +53,10 @@ export interface DrugBalance {
   drugName: string;
   dosage: string;
   brand: string;
-  balance: number;    // 正 = 可借出，負 = 已超借
-  totalLent: number;
-  totalReturned: number;
+  balance: number;       // 正 = 淨餘，負 = 淨欠
+  totalLent: number;     // 借出合計
+  totalReturned: number; // 歸還合計
+  totalBorrowed: number; // 借入合計
 }
 
 // ===== API 回應格式 =====
