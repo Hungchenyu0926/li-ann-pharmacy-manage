@@ -222,62 +222,128 @@ export async function deleteTransaction(rowIndex: number) {
 }
 
 // ============================================================
-// 業績記錄 CRUD
+// 業績 CRUD（統一寫入 YYYYMM 分頁，如 202604）
 // ============================================================
 
-export async function ensurePerformanceTab() {
+// ── 輔助：日期字串轉 "X月X日" 格式 ──
+function formatDayForTab(dateStr: string): string {
+  const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return dateStr;
+  return `${parseInt(m[2])}月${parseInt(m[3])}日`;
+}
+
+// ── 輔助：日期字串取得星期中文 ──
+function getWeekdayStr(dateStr: string): string {
+  const labels = ['日', '一', '二', '三', '四', '五', '六'];
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? '' : labels[d.getDay()];
+}
+
+// ── 輔助：解析 YYYYMM 分頁的「X月X日」→ YYYY-MM-DD ──
+function parseDateFromMonthlyTab(tabName: string, dayStr: string): string {
+  if (!/^\d{6}$/.test(tabName) || !dayStr) return '';
+  const year  = tabName.slice(0, 4);
+  const month = tabName.slice(4, 6);
+  const match = dayStr.match(/\d+月(\d+)日/) ?? dayStr.match(/^(\d+)日$/) ?? dayStr.match(/^(\d+)$/);
+  if (!match) return '';
+  const day = match[1].padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// ── 輔助：若 YYYYMM 分頁不存在則建立（含標題列）──
+async function ensureYearMonthTab(tabName: string): Promise<void> {
   const sheets = await getSheetsClient();
-  const res = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
-  const existingTabs = res.data.sheets?.map(s => s.properties?.title ?? '') ?? [];
-  if (!existingTabs.includes(TAB_PERFORMANCE)) {
+  const res    = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
+  const exists = (res.data.sheets ?? []).some(s => s.properties?.title === tabName);
+  if (!exists) {
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: SHEET_ID,
-      requestBody: { requests: [{ addSheet: { properties: { title: TAB_PERFORMANCE } } }] },
+      requestBody: { requests: [{ addSheet: { properties: { title: tabName } } }] },
     });
-    await appendRow(TAB_PERFORMANCE, [
-      '日期', '天氣', '總人數', '立健首次慢箋', '2/3次慢箋', '立健慢箋', '外來慢箋', '牙科箋', '營業額', '銷售人數',
+    await appendRow(tabName, [
+      '日期', '星期', '天氣', '總人數',
+      '立健首次慢箋', '2/3次慢箋人數', '立健慢箋', '外來慢箋人數', '牙科箋人數',
+      '營業額', '銷售人數',
     ]);
   }
 }
 
+/** 讀取所有 YYYYMM 分頁，回傳完整業績紀錄（含 sourceTab 與正確 rowIndex） */
 export async function getPerformanceRecords(): Promise<PerformanceRecord[]> {
-  await ensurePerformanceTab();
-  const rows = await readRange(`${TAB_PERFORMANCE}!A2:J10000`);
-  // 先記住原始列位置，再過濾空列，避免 rowIndex 因空白列而偏移
-  return rows
-    .map((row, i) => ({ row, rowIndex: i + 2 }))
-    .filter(({ row }) => row[0])
-    .map(({ row, rowIndex }) => ({
-      rowIndex,
-      date: normalizeDate(row[0] ?? ''),
-      weather: (row[1] as WeatherType) || '晴',
-      totalCustomers: parseInt(row[2] ?? '0', 10) || 0,
-      firstRxLijian:  parseInt(row[3] ?? '0', 10) || 0,
-      rx23Lijian:     parseInt(row[4] ?? '0', 10) || 0,
-      lijianRx:       parseInt(row[5] ?? '0', 10) || 0,
-      externalRx:     parseInt(row[6] ?? '0', 10) || 0,
-      dentalRx:       parseInt(row[7] ?? '0', 10) || 0,
-      revenue:        parseFloat(row[8] ?? '0') || 0,
-      salesCount:     parseInt(row[9] ?? '0', 10) || 0,
-    }));
+  const sheets     = await getSheetsClient();
+  const sheetsMeta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
+  const allTitles  = sheetsMeta.data.sheets?.map(s => s.properties?.title ?? '') ?? [];
+  const monthTabs  = allTitles.filter(t => /^\d{6}$/.test(t)).sort();
+  if (monthTabs.length === 0) return [];
+
+  // 一次批次讀取所有月份分頁
+  const batchRes = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId: SHEET_ID,
+    ranges: monthTabs.map(t => `${t}!A2:L1000`),
+  });
+
+  const allRecords: PerformanceRecord[] = [];
+  const seenDates: Record<string, boolean> = {};
+
+  (batchRes.data.valueRanges ?? []).forEach((vr, idx) => {
+    const tabName = monthTabs[idx];
+    const rows    = (vr.values as string[][] | undefined) ?? [];
+    rows
+      .map((row, i) => ({ row, rowIndex: i + 2 }))
+      .filter(({ row }) => row[0])
+      .forEach(({ row, rowIndex }) => {
+        const date = parseDateFromMonthlyTab(tabName, row[0]);
+        if (!date || seenDates[date]) return;
+        seenDates[date] = true;
+        allRecords.push({
+          rowIndex,
+          sourceTab:      tabName,
+          date,
+          weather:        (row[2] as WeatherType) || '晴',
+          totalCustomers: parseInt(row[3]  ?? '0', 10) || 0,
+          firstRxLijian:  parseInt(row[4]  ?? '0', 10) || 0,
+          rx23Lijian:     parseInt(row[5]  ?? '0', 10) || 0,
+          lijianRx:       parseInt(row[6]  ?? '0', 10) || 0,
+          externalRx:     parseInt(row[7]  ?? '0', 10) || 0,
+          dentalRx:       parseInt(row[8]  ?? '0', 10) || 0,
+          revenue:        parseFloat(row[9] ?? '0')    || 0,
+          salesCount:     parseInt(row[10] ?? '0', 10) || 0,
+        });
+      });
+  });
+
+  return allRecords.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export async function addPerformanceRecord(r: Omit<PerformanceRecord, 'rowIndex'>) {
-  await appendRow(TAB_PERFORMANCE, [
-    r.date, r.weather, r.totalCustomers, r.firstRxLijian,
-    r.rx23Lijian, r.lijianRx, r.externalRx, r.dentalRx, r.revenue, r.salesCount,
+/** 新增業績：依日期決定 YYYYMM 分頁（不存在時自動建立） */
+export async function addPerformanceRecord(
+  r: Omit<PerformanceRecord, 'rowIndex' | 'sourceTab'>,
+) {
+  const tabName = r.date.replace(/-/g, '').slice(0, 6); // "2026-04-17" → "202604"
+  await ensureYearMonthTab(tabName);
+  await appendRow(tabName, [
+    formatDayForTab(r.date),  // "4月17日"
+    getWeekdayStr(r.date),    // "三"
+    r.weather,
+    r.totalCustomers, r.firstRxLijian, r.rx23Lijian,
+    r.lijianRx, r.externalRx, r.dentalRx, r.revenue, r.salesCount,
   ]);
 }
 
+/** 更新業績：寫回 sourceTab 的同一列（YYYYMM 格式） */
 export async function updatePerformanceRecord(r: PerformanceRecord) {
-  await updateRow(TAB_PERFORMANCE, r.rowIndex, [
-    r.date, r.weather, r.totalCustomers, r.firstRxLijian,
-    r.rx23Lijian, r.lijianRx, r.externalRx, r.dentalRx, r.revenue, r.salesCount,
+  await updateRow(r.sourceTab, r.rowIndex, [
+    formatDayForTab(r.date),
+    getWeekdayStr(r.date),
+    r.weather,
+    r.totalCustomers, r.firstRxLijian, r.rx23Lijian,
+    r.lijianRx, r.externalRx, r.dentalRx, r.revenue, r.salesCount,
   ]);
 }
 
-export async function deletePerformanceRecord(rowIndex: number) {
-  await deleteRow(TAB_PERFORMANCE, rowIndex);
+/** 刪除業績：從 sourceTab 刪除指定列 */
+export async function deletePerformanceRecord(rowIndex: number, sourceTab: string) {
+  await deleteRow(sourceTab, rowIndex);
 }
 
 // ============================================================

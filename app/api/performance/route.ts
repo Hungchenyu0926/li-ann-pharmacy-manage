@@ -41,8 +41,8 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { rowIndex } = await req.json();
-    await deletePerformanceRecord(rowIndex);
+    const { rowIndex, sourceTab } = await req.json();
+    await deletePerformanceRecord(rowIndex, sourceTab);
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('[DELETE /api/performance]', err);

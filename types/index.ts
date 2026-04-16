@@ -88,14 +88,15 @@ export type WeatherType = '晴' | '雨' | '颱風' | '大風';
 
 export interface PerformanceRecord {
   rowIndex: number;
-  date: string;            // A: 日期 (YYYY-MM-DD)
-  weather: WeatherType;    // B: 天氣
-  totalCustomers: number;  // C: 總人數
-  firstRxLijian: number;   // D: 立健首次慢箋
-  rx23Lijian: number;      // E: 2/3次慢箋人數
-  lijianRx: number;        // F: 立健慢箋
-  externalRx: number;      // G: 外來慢箋人數
-  dentalRx: number;        // H: 牙科箋人數
-  revenue: number;         // I: 營業額
-  salesCount: number;      // J: 銷售人數
+  sourceTab: string;        // YYYYMM 分頁名稱，如 "202604"
+  date: string;             // 日期 (YYYY-MM-DD)
+  weather: WeatherType;     // 天氣
+  totalCustomers: number;   // 總人數
+  firstRxLijian: number;    // 立健首次慢箋
+  rx23Lijian: number;       // 2/3次慢箋人數
+  lijianRx: number;         // 立健慢箋
+  externalRx: number;       // 外來慢箋人數
+  dentalRx: number;         // 牙科箋人數
+  revenue: number;          // 營業額
+  salesCount: number;       // 銷售人數
 }
