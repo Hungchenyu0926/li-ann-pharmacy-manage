@@ -347,6 +347,7 @@ export default function PerformancePage() {
   const [selectedHistTab, setSelectedHistTab]   = useState('');
   const [histRecords, setHistRecords]           = useState<HistoricalDayRecord[]>([]);
   const [histLoading, setHistLoading]           = useState(false);
+  const [initingTab, setInitingTab]             = useState<string | null>(null);
 
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 3500); };
 
@@ -455,6 +456,35 @@ export default function PerformancePage() {
       if (res.success) setHistRecords(res.data ?? []);
       else showToast(`載入失敗：${res.error}`);
     } finally { setHistLoading(false); }
+  };
+
+  // ── 初始化 YYYYMM 月份骨架 ──
+  const handleInitMonth = async (tabName: string) => {
+    if (initingTab) return;
+    const y = tabName.slice(0, 4);
+    const m = parseInt(tabName.slice(4));
+    if (!window.confirm(`確定要為 ${y} 年 ${m} 月建立全月骨架資料嗎？\n（將預填該月所有日期與星期，數值欄位留空）`)) return;
+    setInitingTab(tabName);
+    try {
+      const res = await fetch('/api/historical-performance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tab: tabName }),
+      }).then(r => r.json());
+      if (res.success) {
+        showToast(`✅ ${y} 年 ${m} 月已建立，共新增 ${res.data.rowsAdded} 列`);
+        // 重新載入可用分頁列表
+        const tabsRes = await fetch('/api/historical-performance').then(r => r.json());
+        if (tabsRes.success) setAvailableTabs(tabsRes.data ?? []);
+        // 自動切換到新月份
+        setSelectedHistTab(tabName);
+        loadHistMonth(tabName);
+      } else {
+        showToast(`❌ 建立失敗：${res.error}`);
+      }
+    } finally {
+      setInitingTab(null);
+    }
   };
 
   const handlePrint = (target: 'monthly' | 'annual') => { setPrintTarget(target); setTimeout(() => window.print(), 100); };
@@ -1023,7 +1053,10 @@ export default function PerformancePage() {
           <div className="space-y-6">
             {/* 月份選擇格狀 */}
             <div className="card">
-              <h3 className="font-semibold text-[#0e141b] mb-4">📅 選擇查詢月份</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-[#0e141b]">📅 選擇查詢月份</h3>
+                <span className="text-xs text-[#94a3b8]">綠色虛線 ＋ 月份 → 點擊自動建立全月骨架</span>
+              </div>
               {availableTabs.length === 0 ? (
                 <p className="text-sm text-[#94a3b8]">找不到 YYYYMM 格式的分頁，請確認試算表分頁名稱為 6 位數字（如 202601）。</p>
               ) : (
@@ -1033,21 +1066,30 @@ export default function PerformancePage() {
                       <p className="text-xs font-semibold text-[#4e7397] uppercase tracking-wide mb-2">{y} 年</p>
                       <div className="flex flex-wrap gap-2">
                         {Array.from({ length: 12 }, (_, i) => {
-                          const tabName = `${y}${String(i + 1).padStart(2, '0')}`;
-                          const has  = histYearGroups[y]?.includes(tabName);
-                          const isSel = selectedHistTab === tabName;
+                          const tabName   = `${y}${String(i + 1).padStart(2, '0')}`;
+                          const has       = histYearGroups[y]?.includes(tabName);
+                          const isSel     = selectedHistTab === tabName;
+                          const isIniting = initingTab === tabName;
                           return (
-                            <button key={tabName} disabled={!has}
+                            <button
+                              key={tabName}
+                              disabled={isIniting}
                               onClick={() => {
-                                setSelectedHistTab(tabName);
-                                loadHistMonth(tabName);
+                                if (has) {
+                                  setSelectedHistTab(tabName);
+                                  loadHistMonth(tabName);
+                                } else {
+                                  handleInitMonth(tabName);
+                                }
                               }}
+                              title={has ? `查看 ${i + 1} 月` : `點擊建立 ${i + 1} 月骨架`}
                               className={`w-14 py-1.5 rounded-lg text-sm font-medium border transition-all ${
-                                isSel ? 'bg-[#197fe6] text-white border-transparent shadow-sm'
-                                : has  ? 'bg-white text-[#4e7397] border-[#e7edf3] hover:border-[#197fe6] hover:text-[#197fe6]'
-                                : 'bg-[#f8fafc] text-[#d1d5db] border-dashed border-[#e7edf3] cursor-default'
+                                isSel      ? 'bg-[#197fe6] text-white border-transparent shadow-sm'
+                                : isIniting ? 'bg-[#f0fdf4] text-[#94a3b8] border-[#bbf7d0] cursor-wait animate-pulse'
+                                : has       ? 'bg-white text-[#4e7397] border-[#e7edf3] hover:border-[#197fe6] hover:text-[#197fe6]'
+                                :             'bg-[#f0fdf4] text-[#16a34a] border-dashed border-[#86efac] hover:bg-[#dcfce7] cursor-pointer'
                               }`}>
-                              {i + 1}月
+                              {isIniting ? '…' : has ? `${i + 1}月` : `＋${i + 1}月`}
                             </button>
                           );
                         })}

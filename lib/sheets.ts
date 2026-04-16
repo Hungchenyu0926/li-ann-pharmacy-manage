@@ -239,6 +239,15 @@ function getWeekdayStr(dateStr: string): string {
   return isNaN(d.getTime()) ? '' : labels[d.getDay()];
 }
 
+// ── 輔助：UTC 安全的星期計算（Server 環境，避免時區偏移） ──
+function getWeekdayStrUTC(dateStr: string): string {
+  const labels = ['日', '一', '二', '三', '四', '五', '六'];
+  const [ys, ms, ds] = dateStr.split('-');
+  const y = parseInt(ys), m = parseInt(ms), d = parseInt(ds);
+  if (!y || !m || !d) return '';
+  return labels[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+}
+
 // ── 輔助：解析 YYYYMM 分頁的「X月X日」→ YYYY-MM-DD ──
 function parseDateFromMonthlyTab(tabName: string, dayStr: string): string {
   if (!/^\d{6}$/.test(tabName) || !dayStr) return '';
@@ -266,6 +275,79 @@ async function ensureYearMonthTab(tabName: string): Promise<void> {
       '營業額', '銷售人數',
     ]);
   }
+}
+
+/**
+ * 初始化 YYYYMM 分頁：建立分頁並預填全月日期與星期（含備注欄）。
+ * 若分頁已存在，只補寫缺少的日期列。
+ */
+export async function initMonthTabWithDates(
+  tabName: string,
+): Promise<{ created: boolean; rowsAdded: number }> {
+  if (!/^\d{6}$/.test(tabName)) throw new Error(`無效分頁名稱：${tabName}`);
+
+  const year  = parseInt(tabName.slice(0, 4));
+  const month = parseInt(tabName.slice(4, 6));
+  // 取得該月天數（Date.UTC 的 day=0 會回到上個月最後一天）
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+  const sheets = await getSheetsClient();
+  const res    = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
+  const existingTab = (res.data.sheets ?? []).find(
+    s => s.properties?.title === tabName,
+  );
+
+  let created = false;
+  const existingDayStrs = new Set<string>();
+
+  if (!existingTab) {
+    // 建立新分頁
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SHEET_ID,
+      requestBody: {
+        requests: [{ addSheet: { properties: { title: tabName } } }],
+      },
+    });
+    // 寫標題列（含備注欄）
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: `${tabName}!A1:L1`,
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[
+          '日期', '星期', '天氣', '總人數',
+          '立健首次慢箋', '2/3次慢箋人數', '立健慢箋', '外來慢箋人數', '牙科箋人數',
+          '營業額', '銷售人數', '備注',
+        ]],
+      },
+    });
+    created = true;
+  } else {
+    // 讀取已存在的日期字串，避免重複
+    const rows = await readRange(`${tabName}!A2:A100`);
+    rows.forEach(r => { if (r[0]) existingDayStrs.add(r[0]); });
+  }
+
+  // 產生所有缺少的日期列
+  const newRows: (string | number)[][] = [];
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dayStr  = `${month}月${day}日`;
+    if (existingDayStrs.has(dayStr)) continue;
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const weekday = getWeekdayStrUTC(dateStr);
+    newRows.push([dayStr, weekday, '', '', '', '', '', '', '', '', '', '']);
+  }
+
+  if (newRows.length > 0) {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: `${tabName}!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: newRows },
+    });
+  }
+
+  return { created, rowsAdded: newRows.length };
 }
 
 /** 讀取所有 YYYYMM 分頁，回傳完整業績紀錄（含 sourceTab 與正確 rowIndex） */

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listHistoricalTabs, getHistoricalMonthData } from '@/lib/sheets';
+import { listHistoricalTabs, getHistoricalMonthData, initMonthTabWithDates } from '@/lib/sheets';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +19,20 @@ export async function GET(req: NextRequest) {
     }
   } catch (err) {
     console.error('[GET /api/historical-performance]', err);
+    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { tab } = await req.json();
+    if (!tab || !/^\d{6}$/.test(tab)) {
+      return NextResponse.json({ success: false, error: '請傳入有效的 YYYYMM 格式分頁名稱' }, { status: 400 });
+    }
+    const result = await initMonthTabWithDates(tab);
+    return NextResponse.json({ success: true, data: result });
+  } catch (err) {
+    console.error('[POST /api/historical-performance]', err);
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
