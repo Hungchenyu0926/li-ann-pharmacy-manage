@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import type { PerformanceRecord, WeatherType } from '@/types';
+import type { PerformanceRecord, WeatherType, HistoricalDayRecord } from '@/types';
 import type { ChronicMonthStat } from '@/lib/sheets';
 
 const today = new Date().toISOString().split('T')[0];
@@ -156,6 +156,72 @@ function BarChart({ records, valueKey, color }: {
   );
 }
 
+// ─── 歷史月份長條圖（帶休診淡化）──────────────────────────────
+function SimpleBarChart({ items, color }: {
+  items: { label: string; value: number; dimmed?: boolean }[];
+  color: string;
+}) {
+  if (items.length === 0) return (
+    <div className="h-32 flex items-center justify-center text-[#94a3b8] text-sm">暫無資料</div>
+  );
+  const max = Math.max(...items.map(i => i.value), 1);
+  const BAR_W = 28; const GAP = 3; const H = 110;
+  const totalW = Math.max(items.length * (BAR_W + GAP), 320);
+  return (
+    <div className="overflow-x-auto">
+      <svg width={totalW} height={H + 30} style={{ display: 'block' }}
+        viewBox={`0 0 ${totalW} ${H + 30}`} preserveAspectRatio="none">
+        {items.map((item, i) => {
+          const barH = max > 0 ? (item.value / max) * H : 0;
+          const x = i * (BAR_W + GAP);
+          const y = H - barH;
+          const fill = item.dimmed ? '#e2e8f0' : color;
+          return (
+            <g key={i}>
+              <rect x={x} y={y} width={BAR_W} height={barH} fill={fill} rx={2} opacity={0.85} />
+              {item.value > 0 && !item.dimmed && (
+                <text x={x + BAR_W / 2} y={Math.max(y - 2, 10)}
+                  textAnchor="middle" fontSize="8" fill={color} fontWeight="600">
+                  {item.value >= 10000 ? `${(item.value / 10000).toFixed(1)}萬` : item.value}
+                </text>
+              )}
+              <text x={x + BAR_W / 2} y={H + 20} textAnchor="middle"
+                fontSize="9" fill={item.dimmed ? '#cbd5e1' : '#94a3b8'}>
+                {item.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+// ─── 歷史資料統計（不含休診）──────────────────────────────────
+function computeHistStats(records: HistoricalDayRecord[]) {
+  const active = records.filter(r => !r.isHoliday);
+  const all    = records;
+  const days   = active.length;
+  const totalRevenue   = active.reduce((s, r) => s + r.revenue, 0);
+  const totalCustomers = active.reduce((s, r) => s + r.totalCustomers, 0);
+  const totalSales     = active.reduce((s, r) => s + r.salesCount, 0);
+  const rxBreakdown = {
+    firstRxLijian: active.reduce((s, r) => s + r.firstRxLijian, 0),
+    rx23Lijian:    active.reduce((s, r) => s + r.rx23Lijian, 0),
+    lijianRx:      active.reduce((s, r) => s + r.lijianRx, 0),
+    externalRx:    active.reduce((s, r) => s + r.externalRx, 0),
+    dentalRx:      active.reduce((s, r) => s + r.dentalRx, 0),
+  };
+  const weatherDays: Record<string, number> = {};
+  active.forEach(r => { weatherDays[r.weather] = (weatherDays[r.weather] || 0) + 1; });
+  return {
+    all, active, days,
+    totalRevenue,   avgRevenue:   days ? Math.round(totalRevenue / days)   : 0,
+    totalCustomers, avgCustomers: days ? Math.round(totalCustomers / days) : 0,
+    totalSales,     rxBreakdown,  weatherDays,
+  };
+}
+
 // ─── 統計計算 ────────────────────────────────────────────────
 function getMonths(records: PerformanceRecord[]): string[] {
   const seen: Record<string, boolean> = {};
@@ -218,7 +284,7 @@ export default function PerformancePage() {
   const [chronicStats, setChronicStats] = useState<ChronicMonthStat[]>([]);
   const [loading, setLoading]         = useState(true);
   const [saving, setSaving]           = useState(false);
-  const [tab, setTab]                 = useState<'input' | 'dashboard' | 'trend'>('input');
+  const [tab, setTab]                 = useState<'input' | 'dashboard' | 'trend' | 'hist'>('input');
   const [toastMsg, setToastMsg]       = useState('');
   const [form, setForm]               = useState(emptyForm);
   const [editTarget, setEditTarget]   = useState<PerformanceRecord | null>(null);
@@ -231,6 +297,11 @@ export default function PerformancePage() {
   const [trendMetric, setTrendMetric] = useState<'revenue' | 'totalCustomers' | 'rx'>('revenue');
   const [printTarget, setPrintTarget] = useState<'monthly' | 'annual'>('monthly');
   const [loadError, setLoadError]     = useState('');
+  // 歷史查詢 state
+  const [availableTabs, setAvailableTabs]       = useState<string[]>([]);
+  const [selectedHistTab, setSelectedHistTab]   = useState('');
+  const [histRecords, setHistRecords]           = useState<HistoricalDayRecord[]>([]);
+  const [histLoading, setHistLoading]           = useState(false);
 
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 3500); };
 
@@ -253,6 +324,23 @@ export default function PerformancePage() {
       } else {
         setLoadError(`業績資料載入失敗：${pRes.error ?? '未知錯誤'}（請確認試算表分頁名稱為「業績記錄」）`);
       }
+      // 讀取歷史分頁清單
+      const tabsRes = await fetch('/api/historical-performance')
+        .then(r => r.json()).catch(() => ({ success: false }));
+      if (tabsRes.success) {
+        const tabs: string[] = tabsRes.data ?? [];
+        setAvailableTabs(tabs);
+        if (tabs.length > 0) {
+          const latest = tabs[tabs.length - 1];
+          setSelectedHistTab(latest);
+          // 預載最新月份
+          fetch(`/api/historical-performance?tab=${latest}`)
+            .then(r => r.json())
+            .then(res => { if (res.success) setHistRecords(res.data ?? []); })
+            .catch(() => {});
+        }
+      }
+
       if (cRes.success) {
         const chronicData: ChronicMonthStat[] = cRes.data ?? [];
         setChronicStats(chronicData);
@@ -305,6 +393,17 @@ export default function PerformancePage() {
       if (data.success) { setDeleteTarget(null); await loadAll(); showToast('已刪除紀錄'); }
       else { showToast(`❌ 刪除失敗：${data.error}`); setDeleteTarget(null); }
     } finally { setDeleting(false); }
+  };
+
+  const loadHistMonth = async (tab: string) => {
+    if (!tab) return;
+    setHistLoading(true);
+    setHistRecords([]);
+    try {
+      const res = await fetch(`/api/historical-performance?tab=${tab}`).then(r => r.json());
+      if (res.success) setHistRecords(res.data ?? []);
+      else showToast(`載入失敗：${res.error}`);
+    } finally { setHistLoading(false); }
   };
 
   const handlePrint = (target: 'monthly' | 'annual') => { setPrintTarget(target); setTimeout(() => window.print(), 100); };
@@ -395,9 +494,10 @@ export default function PerformancePage() {
       {/* Tab 切換 */}
       <div className="flex gap-2 border-b border-[#e7edf3] print:hidden">
         {([
-          ['input', '📋 每日記錄'],
+          ['input',     '📋 每日記錄'],
           ['dashboard', '📊 月度儀表板'],
-          ['trend', '📈 年度趨勢'],
+          ['trend',     '📈 年度趨勢'],
+          ['hist',      '📚 歷史查詢'],
         ] as const).map(([val, label]) => (
           <button key={val} onClick={() => setTab(val)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${tab === val ? 'border-primary text-primary' : 'border-transparent text-[#4e7397] hover:text-[#0e141b]'}`}>
@@ -853,6 +953,228 @@ export default function PerformancePage() {
           </div>
         </div>
       )}
+
+      {/* ══════ 歷史查詢 Tab ══════ */}
+      {tab === 'hist' && (() => {
+        // 依年份分組月份清單
+        const histYearGroups: Record<number, string[]> = {};
+        availableTabs.forEach(t => {
+          const y = parseInt(t.slice(0, 4));
+          if (!histYearGroups[y]) histYearGroups[y] = [];
+          histYearGroups[y].push(t);
+        });
+        const histYears = Object.keys(histYearGroups).map(Number).sort((a, b) => a - b);
+        const hStats = histRecords.length > 0 ? computeHistStats(histRecords) : null;
+        const selYear  = selectedHistTab ? parseInt(selectedHistTab.slice(0, 4)) : 0;
+        const selMonth = selectedHistTab ? parseInt(selectedHistTab.slice(4, 6)) : 0;
+
+        return (
+          <div className="space-y-6">
+            {/* 月份選擇格狀 */}
+            <div className="card">
+              <h3 className="font-semibold text-[#0e141b] mb-4">📅 選擇查詢月份</h3>
+              {availableTabs.length === 0 ? (
+                <p className="text-sm text-[#94a3b8]">找不到 YYYYMM 格式的分頁，請確認試算表分頁名稱為 6 位數字（如 202601）。</p>
+              ) : (
+                <div className="space-y-4">
+                  {histYears.map(y => (
+                    <div key={y}>
+                      <p className="text-xs font-semibold text-[#4e7397] uppercase tracking-wide mb-2">{y} 年</p>
+                      <div className="flex flex-wrap gap-2">
+                        {Array.from({ length: 12 }, (_, i) => {
+                          const tabName = `${y}${String(i + 1).padStart(2, '0')}`;
+                          const has  = histYearGroups[y]?.includes(tabName);
+                          const isSel = selectedHistTab === tabName;
+                          return (
+                            <button key={tabName} disabled={!has}
+                              onClick={() => {
+                                setSelectedHistTab(tabName);
+                                loadHistMonth(tabName);
+                              }}
+                              className={`w-14 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                                isSel ? 'bg-[#197fe6] text-white border-transparent shadow-sm'
+                                : has  ? 'bg-white text-[#4e7397] border-[#e7edf3] hover:border-[#197fe6] hover:text-[#197fe6]'
+                                : 'bg-[#f8fafc] text-[#d1d5db] border-dashed border-[#e7edf3] cursor-default'
+                              }`}>
+                              {i + 1}月
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 載入中 */}
+            {histLoading && (
+              <div className="flex items-center gap-2 text-[#4e7397] text-sm">
+                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                載入 {selYear} 年 {selMonth} 月資料中…
+              </div>
+            )}
+
+            {/* 儀表板 */}
+            {!histLoading && hStats && (
+              <div className="space-y-5">
+                {/* 標題列 */}
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-[#0e141b] text-lg">
+                    {selYear} 年 {selMonth} 月業績總覽
+                    <span className="ml-2 text-sm font-normal text-[#94a3b8]">（共 {hStats.all.length} 天，營業 {hStats.days} 天）</span>
+                  </h3>
+                  <button onClick={() => handlePrint('monthly')} className="btn-secondary flex items-center gap-2 print:hidden text-sm">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+                    </svg>
+                    列印報表
+                  </button>
+                </div>
+
+                {/* 摘要卡片 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { label: '本月總營業額', value: `$${hStats.totalRevenue.toLocaleString()}`, sub: `日均 $${hStats.avgRevenue.toLocaleString()}`, color: 'text-blue-600', bg: 'bg-blue-50' },
+                    { label: '總來客人數',   value: hStats.totalCustomers.toLocaleString(),   sub: `日均 ${hStats.avgCustomers} 人`,         color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                    { label: '銷售人數',     value: hStats.totalSales.toLocaleString(),       sub: `日均 ${hStats.days ? Math.round(hStats.totalSales / hStats.days) : 0} 人`, color: 'text-violet-600', bg: 'bg-violet-50' },
+                    { label: '營業天數',     value: `${hStats.days} 天`,                      sub: `${hStats.all.length - hStats.days} 天休診`, color: 'text-amber-600',   bg: 'bg-amber-50' },
+                  ].map(c => (
+                    <div key={c.label} className={`card ${c.bg} border-0 p-4`}>
+                      <p className="text-xs text-[#4e7397] mb-1">{c.label}</p>
+                      <p className={`text-xl font-bold ${c.color}`}>{c.value}</p>
+                      <p className="text-xs text-[#94a3b8] mt-0.5">{c.sub}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 每日營業額長條圖 */}
+                <div className="card">
+                  <h4 className="font-semibold text-[#0e141b] mb-3 text-sm">📈 每日營業額（元）</h4>
+                  <SimpleBarChart color="#197fe6" items={hStats.all.map(r => ({
+                    label: r.date.slice(8).replace(/^0/, '') + '日',
+                    value: r.revenue,
+                    dimmed: r.isHoliday,
+                  }))} />
+                </div>
+
+                {/* 每日來客長條圖 */}
+                <div className="card">
+                  <h4 className="font-semibold text-[#0e141b] mb-3 text-sm">👥 每日來客人數</h4>
+                  <SimpleBarChart color="#10b981" items={hStats.all.map(r => ({
+                    label: r.date.slice(8).replace(/^0/, '') + '日',
+                    value: r.totalCustomers,
+                    dimmed: r.isHoliday,
+                  }))} />
+                </div>
+
+                {/* 慢箋分類 + 天氣分佈 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="card">
+                    <h4 className="font-semibold text-[#0e141b] mb-3 text-sm">💊 慢箋分類統計</h4>
+                    <div className="space-y-2.5">
+                      {RX_FIELDS.map(f => {
+                        const count = hStats.rxBreakdown[f.key];
+                        const total = Object.values(hStats.rxBreakdown).reduce((a, b) => a + b, 0);
+                        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                        return (
+                          <div key={f.key}>
+                            <div className="flex justify-between text-sm mb-1">
+                              <span className="text-[#4e7397] text-xs">{f.label}</span>
+                              <span className="font-semibold text-xs" style={{ color: f.color }}>{count} 人（{pct}%）</span>
+                            </div>
+                            <div className="h-1.5 bg-[#f1f5f9] rounded-full overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: f.color }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <p className="text-xs text-[#94a3b8] pt-1 border-t border-[#f1f5f9]">
+                        合計：{Object.values(hStats.rxBreakdown).reduce((a, b) => a + b, 0)} 人
+                      </p>
+                    </div>
+                  </div>
+                  <div className="card">
+                    <h4 className="font-semibold text-[#0e141b] mb-3 text-sm">🌤️ 天氣分佈（營業日）</h4>
+                    <div className="space-y-2.5">
+                      {WEATHER_OPTIONS.map(w => {
+                        const d   = hStats.weatherDays[w.value] || 0;
+                        const pct = hStats.days > 0 ? Math.round((d / hStats.days) * 100) : 0;
+                        return (
+                          <div key={w.value}>
+                            <div className="flex justify-between text-sm mb-1">
+                              <span className="text-[#4e7397] text-xs">{w.label}</span>
+                              <span className="font-semibold text-xs text-[#0e141b]">{d} 天（{pct}%）</span>
+                            </div>
+                            <div className="h-1.5 bg-[#f1f5f9] rounded-full overflow-hidden">
+                              <div className="h-full rounded-full bg-[#197fe6]" style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 每日明細表 */}
+                <div className="card p-0 overflow-hidden">
+                  <div className="px-5 py-3 border-b border-[#e7edf3]">
+                    <h4 className="font-semibold text-[#0e141b] text-sm">📋 每日明細</h4>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table>
+                      <thead><tr>
+                        <th>日期</th><th>星期</th><th>天氣</th><th>總人數</th>
+                        <th>立健首次</th><th>2/3次</th><th>立健慢箋</th><th>外來慢箋</th><th>牙科箋</th>
+                        <th>銷售</th><th>營業額</th><th>備注</th>
+                      </tr></thead>
+                      <tbody>
+                        {hStats.all.map((r, i) => (
+                          <tr key={i} className={r.isHoliday ? 'opacity-40' : ''}>
+                            <td className="whitespace-nowrap font-medium">{r.date}</td>
+                            <td className="whitespace-nowrap text-[#4e7397]">{r.weekday}</td>
+                            <td>{r.weather === '晴' ? '☀️' : r.weather === '雨' ? '🌧️' : r.weather === '颱風' ? '🌀' : '💨'} {r.weather}</td>
+                            <td>{r.totalCustomers}</td>
+                            <td>{r.firstRxLijian}</td><td>{r.rx23Lijian}</td>
+                            <td>{r.lijianRx}</td><td>{r.externalRx}</td><td>{r.dentalRx}</td>
+                            <td>{r.salesCount}</td>
+                            <td className="font-semibold text-[#197fe6] whitespace-nowrap">{r.revenue > 0 ? `$${r.revenue.toLocaleString()}` : '—'}</td>
+                            <td className="text-[#ef4444] text-xs">{r.note}</td>
+                          </tr>
+                        ))}
+                        {/* 合計列 */}
+                        <tr className="bg-[#f8fafc] font-bold text-[#0e141b]">
+                          <td colSpan={3}>合計（營業 {hStats.days} 天）</td>
+                          <td>{hStats.totalCustomers}</td>
+                          <td>{hStats.rxBreakdown.firstRxLijian}</td>
+                          <td>{hStats.rxBreakdown.rx23Lijian}</td>
+                          <td>{hStats.rxBreakdown.lijianRx}</td>
+                          <td>{hStats.rxBreakdown.externalRx}</td>
+                          <td>{hStats.rxBreakdown.dentalRx}</td>
+                          <td>{hStats.totalSales}</td>
+                          <td className="text-[#197fe6]">${hStats.totalRevenue.toLocaleString()}</td>
+                          <td></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 選了月份但無資料 */}
+            {!histLoading && selectedHistTab && histRecords.length === 0 && (
+              <div className="card text-center py-16 text-[#94a3b8]">
+                <p className="text-4xl mb-3">📭</p>
+                <p className="font-medium">{selYear} 年 {selMonth} 月 尚無資料</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 刪除確認 */}
       {deleteTarget && (

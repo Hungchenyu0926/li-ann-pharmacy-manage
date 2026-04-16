@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import type { Patient, Drug, Transaction, PerformanceRecord, WeatherType } from '@/types';
+import type { Patient, Drug, Transaction, PerformanceRecord, WeatherType, HistoricalDayRecord } from '@/types';
 import { normalizeDate } from '@/lib/dateUtils';
 
 const SHEET_ID = process.env.SHEET_ID!;
@@ -278,6 +278,56 @@ export async function updatePerformanceRecord(r: PerformanceRecord) {
 
 export async function deletePerformanceRecord(rowIndex: number) {
   await deleteRow(TAB_PERFORMANCE, rowIndex);
+}
+
+// ============================================================
+// 歷史月度業績（YYYYMM 格式分頁，如 202601、202602）
+// ============================================================
+
+/** 列出所有符合 YYYYMM 格式的分頁名稱，升序排列 */
+export async function listHistoricalTabs(): Promise<string[]> {
+  const sheets = await getSheetsClient();
+  const res = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
+  return (res.data.sheets ?? [])
+    .map(s => s.properties?.title ?? '')
+    .filter(t => /^\d{6}$/.test(t))
+    .sort();
+}
+
+/** 讀取指定 YYYYMM 分頁的每日業績資料 */
+export async function getHistoricalMonthData(tab: string): Promise<HistoricalDayRecord[]> {
+  if (!/^\d{6}$/.test(tab)) throw new Error(`無效分頁名稱：${tab}`);
+  const year  = parseInt(tab.slice(0, 4));
+  const month = parseInt(tab.slice(4, 6));
+
+  const rows = await readRange(`${tab}!A2:L100`);
+  return rows
+    .filter(row => row[0] && /\d+月\d+日/.test(row[0]))
+    .map(row => {
+      // 解析「1月1日」→ day 數字，年月從分頁名取得
+      const dayMatch = row[0].match(/\d+月(\d+)日/);
+      const day = dayMatch ? parseInt(dayMatch[1]) : 0;
+      const date = day > 0
+        ? `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        : '';
+      const note = row[11] ?? '';
+      return {
+        date,
+        weekday:        row[1] ?? '',
+        weather:        row[2] ?? '晴',
+        totalCustomers: parseInt(row[3]  ?? '0') || 0,
+        firstRxLijian:  parseInt(row[4]  ?? '0') || 0,
+        rx23Lijian:     parseInt(row[5]  ?? '0') || 0,
+        lijianRx:       parseInt(row[6]  ?? '0') || 0,
+        externalRx:     parseInt(row[7]  ?? '0') || 0,
+        dentalRx:       parseInt(row[8]  ?? '0') || 0,
+        revenue:        parseFloat(row[9] ?? '0') || 0,
+        salesCount:     parseInt(row[10] ?? '0') || 0,
+        note,
+        isHoliday: note.includes('休診'),
+      };
+    })
+    .filter(r => r.date);
 }
 
 // ============================================================

@@ -59,6 +59,23 @@ export interface DrugBalance {
   totalBorrowed: number; // 借入合計
 }
 
+// ===== 歷史月度紀錄（YYYYMM 分頁格式）=====
+export interface HistoricalDayRecord {
+  date: string;           // YYYY-MM-DD（由分頁名 + 日期欄解析）
+  weekday: string;        // 星期X
+  weather: string;        // 晴/雨/颱風/大風
+  totalCustomers: number;
+  firstRxLijian: number;
+  rx23Lijian: number;
+  lijianRx: number;
+  externalRx: number;
+  dentalRx: number;
+  revenue: number;
+  salesCount: number;
+  note: string;           // 休診 / 備注
+  isHoliday: boolean;
+}
+
 // ===== API 回應格式 =====
 export interface ApiResponse<T> {
   success: boolean;
