@@ -65,3 +65,20 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
 }
+
+// ===== 業績紀錄 =====
+export type WeatherType = '晴' | '雨' | '颱風' | '大風';
+
+export interface PerformanceRecord {
+  rowIndex: number;
+  date: string;            // A: 日期 (YYYY-MM-DD)
+  weather: WeatherType;    // B: 天氣
+  totalCustomers: number;  // C: 總人數
+  firstRxLijian: number;   // D: 立健首次慢箋
+  rx23Lijian: number;      // E: 2/3次慢箋人數
+  lijianRx: number;        // F: 立健慢箋
+  externalRx: number;      // G: 外來慢箋人數
+  dentalRx: number;        // H: 牙科箋人數
+  revenue: number;         // I: 營業額
+  salesCount: number;      // J: 銷售人數
+}

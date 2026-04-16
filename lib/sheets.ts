@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import type { Patient, Drug, Transaction } from '@/types';
+import type { Patient, Drug, Transaction, PerformanceRecord, WeatherType } from '@/types';
 import { normalizeDate } from '@/lib/dateUtils';
 
 const SHEET_ID = process.env.SHEET_ID!;
@@ -8,6 +8,7 @@ const SHEET_ID = process.env.SHEET_ID!;
 const TAB_PATIENTS = '工作表1';
 const TAB_DRUGS = '藥品清單';
 const TAB_TRANSACTIONS = '借還紀錄';
+const TAB_PERFORMANCE = '業績記錄';
 
 // ===== 認證 =====
 function getAuth() {
@@ -216,4 +217,61 @@ export async function addTransaction(t: Omit<Transaction, 'rowIndex'>) {
 
 export async function deleteTransaction(rowIndex: number) {
   await deleteRow(TAB_TRANSACTIONS, rowIndex);
+}
+
+// ============================================================
+// 業績記錄 CRUD
+// ============================================================
+
+export async function ensurePerformanceTab() {
+  const sheets = await getSheetsClient();
+  const res = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
+  const existingTabs = res.data.sheets?.map(s => s.properties?.title ?? '') ?? [];
+  if (!existingTabs.includes(TAB_PERFORMANCE)) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SHEET_ID,
+      requestBody: { requests: [{ addSheet: { properties: { title: TAB_PERFORMANCE } } }] },
+    });
+    await appendRow(TAB_PERFORMANCE, [
+      '日期', '天氣', '總人數', '立健首次慢箋', '2/3次慢箋', '立健慢箋', '外來慢箋', '牙科箋', '營業額', '銷售人數',
+    ]);
+  }
+}
+
+export async function getPerformanceRecords(): Promise<PerformanceRecord[]> {
+  await ensurePerformanceTab();
+  const rows = await readRange(`${TAB_PERFORMANCE}!A2:J10000`);
+  return rows
+    .filter(row => row[0])
+    .map((row, i) => ({
+      rowIndex: i + 2,
+      date: normalizeDate(row[0] ?? ''),
+      weather: (row[1] as WeatherType) || '晴',
+      totalCustomers: parseInt(row[2] ?? '0', 10) || 0,
+      firstRxLijian:  parseInt(row[3] ?? '0', 10) || 0,
+      rx23Lijian:     parseInt(row[4] ?? '0', 10) || 0,
+      lijianRx:       parseInt(row[5] ?? '0', 10) || 0,
+      externalRx:     parseInt(row[6] ?? '0', 10) || 0,
+      dentalRx:       parseInt(row[7] ?? '0', 10) || 0,
+      revenue:        parseFloat(row[8] ?? '0') || 0,
+      salesCount:     parseInt(row[9] ?? '0', 10) || 0,
+    }));
+}
+
+export async function addPerformanceRecord(r: Omit<PerformanceRecord, 'rowIndex'>) {
+  await appendRow(TAB_PERFORMANCE, [
+    r.date, r.weather, r.totalCustomers, r.firstRxLijian,
+    r.rx23Lijian, r.lijianRx, r.externalRx, r.dentalRx, r.revenue, r.salesCount,
+  ]);
+}
+
+export async function updatePerformanceRecord(r: PerformanceRecord) {
+  await updateRow(TAB_PERFORMANCE, r.rowIndex, [
+    r.date, r.weather, r.totalCustomers, r.firstRxLijian,
+    r.rx23Lijian, r.lijianRx, r.externalRx, r.dentalRx, r.revenue, r.salesCount,
+  ]);
+}
+
+export async function deletePerformanceRecord(rowIndex: number) {
+  await deleteRow(TAB_PERFORMANCE, rowIndex);
 }

@@ -162,6 +162,67 @@ label {
   margin-bottom: 0.375rem;
 }
 
+/* ── 列印樣式 ─────────────────────────────── */
+@media print {
+  /* 隱藏側邊欄、頂部導覽、操作按鈕 */
+  aside,
+  nav,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* 主內容填滿整頁 */
+  main {
+    margin-left: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  body {
+    background: white !important;
+    font-size: 12pt;
+  }
+
+  /* 卡片無陰影、邊框較細 */
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* 圖表區不分頁切斷 */
+  svg {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* 表格邊線清晰 */
+  table, th, td {
+    border: 1px solid #ccc !important;
+  }
+
+  th {
+    background-color: #f0f0f0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* 彩色保留（進度條、徽章） */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* 每個大區塊前自動分頁 */
+  #print-report > .card:nth-child(n+3) {
+    page-break-before: auto;
+  }
+
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+}
+
 /* 滾動條美化 */
 ::-webkit-scrollbar {
   width: 6px;
