@@ -275,3 +275,31 @@ export async function updatePerformanceRecord(r: PerformanceRecord) {
 export async function deletePerformanceRecord(rowIndex: number) {
   await deleteRow(TAB_PERFORMANCE, rowIndex);
 }
+
+// ============================================================
+// 慢箋月度統計（從 工作表1 個案紀錄彙算）
+// ============================================================
+
+export interface ChronicMonthStat {
+  month: string;       // YYYY-MM
+  newPatients: number; // 當月首次領藥個案數
+  completed: number;   // 已結案個案中首次在該月的數
+}
+
+export async function getMonthlyChronicStats(): Promise<ChronicMonthStat[]> {
+  const patients = await getPatients();
+  const map: Record<string, { newPatients: number; completed: number }> = {};
+
+  patients.forEach(p => {
+    if (!p.firstPickupDate) return;
+    const month = p.firstPickupDate.slice(0, 7);
+    if (!month.match(/^\d{4}-\d{2}$/)) return;
+    if (!map[month]) map[month] = { newPatients: 0, completed: 0 };
+    map[month].newPatients++;
+    if (p.completed) map[month].completed++;
+  });
+
+  return Object.entries(map)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, s]) => ({ month, ...s }));
+}
