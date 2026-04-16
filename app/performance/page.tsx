@@ -159,13 +159,19 @@ function BarChart({ records, valueKey, color }: {
 // ─── 統計計算 ────────────────────────────────────────────────
 function getMonths(records: PerformanceRecord[]): string[] {
   const seen: Record<string, boolean> = {};
-  records.forEach(r => { seen[r.date.slice(0, 7)] = true; });
+  records.forEach(r => {
+    const m = r.date.slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(m)) seen[m] = true;  // 過濾非 YYYY-MM 格式
+  });
   return Object.keys(seen).sort((a, b) => b.localeCompare(a));
 }
 
 function getYears(records: PerformanceRecord[]): number[] {
   const seen: Record<number, boolean> = {};
-  records.forEach(r => { seen[parseInt(r.date.slice(0, 4))] = true; });
+  records.forEach(r => {
+    const y = parseInt(r.date.slice(0, 4));
+    if (!isNaN(y) && y > 2000 && y < 2100) seen[y] = true;  // 過濾異常年份
+  });
   return Object.keys(seen).map(Number).sort((a, b) => a - b);
 }
 
@@ -224,26 +230,45 @@ export default function PerformancePage() {
   const [trendYears, setTrendYears]   = useState<number[]>([]);
   const [trendMetric, setTrendMetric] = useState<'revenue' | 'totalCustomers' | 'rx'>('revenue');
   const [printTarget, setPrintTarget] = useState<'monthly' | 'annual'>('monthly');
+  const [loadError, setLoadError]     = useState('');
 
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 3500); };
 
   const loadAll = useCallback(async () => {
+    setLoadError('');
     try {
       const [pRes, cRes] = await Promise.all([
-        fetch('/api/performance').then(r => r.json()),
-        fetch('/api/chronic-stats').then(r => r.json()),
+        fetch('/api/performance').then(r => r.json()).catch(e => ({ success: false, error: String(e) })),
+        fetch('/api/chronic-stats').then(r => r.json()).catch(e => ({ success: false, error: String(e) })),
       ]);
       if (pRes.success) {
         const recs: PerformanceRecord[] = pRes.data ?? [];
         setRecords(recs);
-        const curMonth = new Date().toISOString().slice(0, 7);
         const months = getMonths(recs);
-        setSelectedMonth(months.includes(curMonth) ? curMonth : (months[0] ?? curMonth));
-        // 預設選取全部年份
+        // 預設選最新月份（不鎖在可能無資料的當月）
+        setSelectedMonth(months[0] ?? '');
+        // 預設選最新年份
         const years = getYears(recs);
         setTrendYears(years.length > 0 ? [years[years.length - 1]] : []);
+      } else {
+        setLoadError(`業績資料載入失敗：${pRes.error ?? '未知錯誤'}（請確認試算表分頁名稱為「業績記錄」）`);
       }
-      if (cRes.success) setChronicStats(cRes.data ?? []);
+      if (cRes.success) {
+        const chronicData: ChronicMonthStat[] = cRes.data ?? [];
+        setChronicStats(chronicData);
+        // 業績無資料時，用慢箋年份初始化 trendYears，讓年度折線仍能顯示
+        if (!pRes.success || (pRes.data ?? []).length === 0) {
+          const seenCY: Record<number, boolean> = {};
+          chronicData.forEach(s => { seenCY[parseInt(s.month.slice(0, 4))] = true; });
+          const chronicYearsArr = Object.keys(seenCY).map(Number).sort((a, b) => a - b);
+          if (chronicYearsArr.length > 0) setTrendYears(chronicYearsArr.slice(-3));
+        }
+      } else if (!pRes.success) {
+        // 僅在兩個都失敗時附加第二條錯誤（避免訊息過長）
+        setLoadError(prev => prev + `\n慢箋統計載入失敗：${cRes.error ?? '未知錯誤'}`);
+      }
+    } catch (err) {
+      setLoadError(`網路錯誤：${String(err)}`);
     } finally { setLoading(false); }
   }, []);
 
@@ -346,6 +371,26 @@ export default function PerformancePage() {
         <h1 className="text-2xl font-bold text-[#0e141b]">業績管理</h1>
         <p className="text-sm text-[#4e7397] mt-1">每日業績記錄、月度儀表板與年度趨勢分析</p>
       </div>
+
+      {/* 錯誤提示 */}
+      {loadError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 print:hidden">
+          <div className="flex items-start gap-3">
+            <span className="text-red-500 text-xl mt-0.5">⚠️</span>
+            <div>
+              <p className="font-semibold text-red-700 text-sm">資料載入失敗</p>
+              {loadError.split('\n').map((line, i) => (
+                <p key={i} className="text-red-600 text-sm mt-1 font-mono">{line}</p>
+              ))}
+              <p className="text-red-500 text-xs mt-2">
+                💡 請確認 Google 試算表中有分頁名稱為「<strong>業績記錄</strong>」（記 = 記錄的記），
+                並確認服務帳號已有該試算表的編輯權限。
+              </p>
+              <button onClick={loadAll} className="mt-2 text-xs text-red-600 underline">重新載入</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tab 切換 */}
       <div className="flex gap-2 border-b border-[#e7edf3] print:hidden">
@@ -468,10 +513,13 @@ export default function PerformancePage() {
           <div className="flex flex-wrap items-center gap-3 print:hidden">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-[#4e7397]">月份：</span>
-              <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="w-36">
-                {months.length === 0 ? <option value="">（無資料）</option>
-                  : months.map(m => <option key={m} value={m}>{m.slice(0,4)}年{parseInt(m.slice(5))}月</option>)}
-              </select>
+              {months.length > 0 ? (
+                <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="w-40">
+                  {months.map(m => <option key={m} value={m}>{m.slice(0,4)}年{parseInt(m.slice(5))}月</option>)}
+                </select>
+              ) : (
+                <span className="text-sm text-[#94a3b8]">（試算表「業績記錄」分頁尚無資料）</span>
+              )}
             </div>
             <button onClick={() => handlePrint('monthly')}
               className="btn-secondary flex items-center gap-2 ml-auto">
