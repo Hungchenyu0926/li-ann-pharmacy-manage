@@ -33,6 +33,10 @@ function yearColor(y: number) { return YEAR_COLORS[y] ?? '#197fe6'; }
 
 // ─── SVG 折線圖（多系列）──────────────────────────────────────
 type ChartSeries = { name: string; data: number[]; color: string };
+type TooltipState = {
+  svgX: number; svgY: number;
+  value: number; xLabel: string; seriesName: string; color: string;
+} | null;
 
 function MultiLineChart({
   series,
@@ -45,6 +49,8 @@ function MultiLineChart({
   height?: number;
   formatY?: (v: number) => string;
 }) {
+  const [tooltip, setTooltip] = useState<TooltipState>(null);
+
   const n = xLabels.length;
   const allV = series.flatMap(s => s.data).filter(v => v > 0);
   if (allV.length === 0) return (
@@ -59,10 +65,16 @@ function MultiLineChart({
   const yp = (v: number) => PT + cH - (v / maxY) * cH;
   const yTicks = [0, 0.25, 0.5, 0.75, 1];
 
+  // Tooltip 尺寸與定位（SVG 座標系）
+  const TW = 136; const TH = 50;
+  const tx = tooltip ? Math.min(tooltip.svgX + 12, W - PR - TW) : 0;
+  const ty = tooltip ? Math.max(tooltip.svgY - TH - 8, PT) : 0;
+
   return (
     <div className="overflow-x-auto">
       <svg width="100%" height={height} viewBox={`0 0 ${W} ${height}`}
-        style={{ minWidth: 320, display: 'block' }} preserveAspectRatio="xMidYMid meet">
+        style={{ minWidth: 320, display: 'block' }} preserveAspectRatio="xMidYMid meet"
+        onMouseLeave={() => setTooltip(null)}>
         {/* 格線 + Y軸標籤 */}
         {yTicks.map((r, ti) => {
           const yv = Math.round(maxY * r);
@@ -82,7 +94,7 @@ function MultiLineChart({
           <text key={i} x={xp(i)} y={height - 6}
             textAnchor="middle" fontSize="10" fill="#94a3b8">{lbl}</text>
         ))}
-        {/* 系列 */}
+        {/* 系列：折線 + 互動圓點 */}
         {series.map(s => {
           const pts = s.data.map((v, i) => `${xp(i)},${yp(v)}`).join(' ');
           return (
@@ -90,12 +102,45 @@ function MultiLineChart({
               <polyline points={pts} fill="none" stroke={s.color}
                 strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
               {s.data.map((v, i) => (
-                <circle key={i} cx={xp(i)} cy={yp(v)} r={v > 0 ? 3.5 : 2}
-                  fill={v > 0 ? s.color : 'none'} />
+                <circle key={i} cx={xp(i)} cy={yp(v)}
+                  r={v > 0 ? 5 : 0}
+                  fill={v > 0 ? s.color : 'none'}
+                  opacity={tooltip && tooltip.svgX === xp(i) && tooltip.seriesName === s.name ? 1 : 0.6}
+                  style={{ cursor: v > 0 ? 'crosshair' : 'default' }}
+                  onMouseEnter={v > 0 ? () => setTooltip({
+                    svgX: xp(i), svgY: yp(v),
+                    value: v, xLabel: xLabels[i],
+                    seriesName: s.name, color: s.color,
+                  }) : undefined}
+                />
               ))}
             </g>
           );
         })}
+        {/* Hover Tooltip */}
+        {tooltip && (
+          <g pointerEvents="none">
+            {/* 連接線 */}
+            <line x1={tooltip.svgX} y1={tooltip.svgY - 6}
+              x2={tooltip.svgX} y2={PT}
+              stroke={tooltip.color} strokeWidth={1} strokeDasharray="3 3" opacity={0.4} />
+            {/* 提示框背景 */}
+            <rect x={tx} y={ty} width={TW} height={TH} rx={6}
+              fill="white" stroke="#e2e8f0" strokeWidth={1.5}
+              style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.12))' }} />
+            {/* 色條 */}
+            <rect x={tx} y={ty} width={4} height={TH} rx={3}
+              fill={tooltip.color} />
+            {/* 系列名 */}
+            <text x={tx + 12} y={ty + 18} fontSize="11" fill={tooltip.color} fontWeight="700">
+              {tooltip.seriesName}
+            </text>
+            {/* 月份 + 數值 */}
+            <text x={tx + 12} y={ty + 36} fontSize="11" fill="#475569">
+              {tooltip.xLabel}：{formatY(tooltip.value)}
+            </text>
+          </g>
+        )}
       </svg>
     </div>
   );
