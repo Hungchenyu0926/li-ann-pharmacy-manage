@@ -128,10 +128,12 @@ export async function ensureDrugTabs() {
 
 export async function getPatients(): Promise<Patient[]> {
   const rows = await readRange(`${TAB_PATIENTS}!A2:J10000`);
+  // 先記住原始列位置（row 2 起），再過濾空列，避免 rowIndex 因空白列而偏移
   return rows
-    .filter(row => row[0]) // 跳過空列
-    .map((row, i) => ({
-      rowIndex: i + 2,
+    .map((row, i) => ({ row, rowIndex: i + 2 }))
+    .filter(({ row }) => row[0])
+    .map(({ row, rowIndex }) => ({
+      rowIndex,
       name: row[0] ?? '',
       phone: row[1] ?? '',
       dob: normalizeDate(row[2] ?? ''),
@@ -241,10 +243,12 @@ export async function ensurePerformanceTab() {
 export async function getPerformanceRecords(): Promise<PerformanceRecord[]> {
   await ensurePerformanceTab();
   const rows = await readRange(`${TAB_PERFORMANCE}!A2:J10000`);
+  // 先記住原始列位置，再過濾空列，避免 rowIndex 因空白列而偏移
   return rows
-    .filter(row => row[0])
-    .map((row, i) => ({
-      rowIndex: i + 2,
+    .map((row, i) => ({ row, rowIndex: i + 2 }))
+    .filter(({ row }) => row[0])
+    .map(({ row, rowIndex }) => ({
+      rowIndex,
       date: normalizeDate(row[0] ?? ''),
       weather: (row[1] as WeatherType) || '晴',
       totalCustomers: parseInt(row[2] ?? '0', 10) || 0,
