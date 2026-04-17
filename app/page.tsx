@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { Patient, Transaction, Drug, DrugBalance } from '@/types';
-import { addDays, calculateDates, checkStatus } from '@/lib/dateUtils';
+import { checkStatus } from '@/lib/dateUtils';
 
 function StatCard({
   label,
@@ -68,16 +68,19 @@ export default function DashboardPage() {
   const balanceMap: Record<string, DrugBalance> = {};
   drugs.forEach(d => {
     const key = `${d.name}|${d.dosage}|${d.brand}`;
-    balanceMap[key] = { drugName: d.name, dosage: d.dosage, brand: d.brand, balance: 0, totalLent: 0, totalReturned: 0 };
+    balanceMap[key] = { drugName: d.name, dosage: d.dosage, brand: d.brand, balance: 0, totalLent: 0, totalReturned: 0, totalBorrowed: 0 };
   });
   transactions.forEach(t => {
     const key = `${t.drugName}|${t.dosage}|${t.brand}`;
     if (!balanceMap[key]) {
-      balanceMap[key] = { drugName: t.drugName, dosage: t.dosage, brand: t.brand, balance: 0, totalLent: 0, totalReturned: 0 };
+      balanceMap[key] = { drugName: t.drugName, dosage: t.dosage, brand: t.brand, balance: 0, totalLent: 0, totalReturned: 0, totalBorrowed: 0 };
     }
     if (t.type === '借出') {
       balanceMap[key].balance -= t.quantity;
       balanceMap[key].totalLent += t.quantity;
+    } else if (t.type === '借入') {
+      balanceMap[key].balance += t.quantity;
+      balanceMap[key].totalBorrowed += t.quantity;
     } else {
       balanceMap[key].balance += t.quantity;
       balanceMap[key].totalReturned += t.quantity;

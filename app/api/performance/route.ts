@@ -1,46 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTransactions, addTransaction, updateTransaction, deleteTransaction } from '@/lib/sheets';
-import type { Transaction } from '@/types';
+import {
+  getPerformanceRecords,
+  addPerformanceRecord,
+  updatePerformanceRecord,
+  deletePerformanceRecord,
+} from '@/lib/sheets';
+import type { PerformanceRecord } from '@/types';
 
 export async function GET() {
   try {
-    const transactions = await getTransactions();
-    return NextResponse.json({ success: true, data: transactions });
+    const records = await getPerformanceRecords();
+    return NextResponse.json({ success: true, data: records });
   } catch (err) {
-    console.error('[GET /api/transactions]', err);
+    console.error('[GET /api/performance]', err);
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body: Omit<Transaction, 'rowIndex'> = await req.json();
-    await addTransaction(body);
+    const body: Omit<PerformanceRecord, 'rowIndex'> = await req.json();
+    await addPerformanceRecord(body);
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('[POST /api/transactions]', err);
+    console.error('[POST /api/performance]', err);
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
 
 export async function PUT(req: NextRequest) {
   try {
-    const body: Transaction = await req.json();
-    await updateTransaction(body);
+    const body: PerformanceRecord = await req.json();
+    await updatePerformanceRecord(body);
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('[PUT /api/transactions]', err);
+    console.error('[PUT /api/performance]', err);
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { rowIndex } = await req.json();
-    await deleteTransaction(rowIndex);
+    const { rowIndex, sourceTab } = await req.json();
+    await deletePerformanceRecord(rowIndex, sourceTab);
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('[DELETE /api/transactions]', err);
+    console.error('[DELETE /api/performance]', err);
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }

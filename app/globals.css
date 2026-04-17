@@ -162,6 +162,108 @@ label {
   margin-bottom: 0.375rem;
 }
 
+/* ── 列印樣式 ─────────────────────────────── */
+@media print {
+  /* ── 隱藏 UI 框架 ── */
+  aside,
+  nav,
+  .print\:hidden,
+  .no-print {
+    display: none !important;
+  }
+
+  /* 主內容填滿整頁 */
+  main {
+    margin-left: 0 !important;
+    padding-top: 0 !important;
+    padding: 0 !important;
+  }
+
+  body {
+    background: white !important;
+    font-size: 11pt;
+    color: #111 !important;
+  }
+
+  /* ── 彩色強制保留 ── */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* ── 卡片：去陰影、邊框清晰、避免分頁切斷 ── */
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 0.75rem !important;
+  }
+
+  /* ── SVG 圖表：避免切斷 ── */
+  svg {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* ── 表格樣式 ── */
+  table, th, td {
+    border: 1px solid #bbb !important;
+  }
+  th {
+    background-color: #f0f4f8 !important;
+    font-size: 10pt;
+  }
+  td {
+    font-size: 10pt;
+  }
+
+  /* ── 標題不孤立 ── */
+  h1, h2, h3, h4 {
+    page-break-after: avoid;
+  }
+
+  /* ── 月度報表：關鍵卡片分頁 ── */
+  #print-report {
+    padding: 0 !important;
+  }
+  #print-report > .card:nth-child(n+3) {
+    page-break-before: auto;
+  }
+
+  /* ── 年度趨勢報表 ── */
+  #print-annual {
+    padding: 0 !important;
+  }
+  /* 每個年度摘要卡片不切斷 */
+  #print-annual .year-summary-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* 多折線圖容器不切斷 */
+  #print-annual .chart-block {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+  /* 慢箋統計大表在年度頁首先換頁 */
+  #print-annual .chronic-table-section {
+    page-break-before: always;
+  }
+  /* 年度趨勢各指標圖：兩欄並排（若頁面夠寬） */
+  #print-annual .rx-charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+  #print-annual .rx-charts-grid > div {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
 /* 滾動條美化 */
 ::-webkit-scrollbar {
   width: 6px;

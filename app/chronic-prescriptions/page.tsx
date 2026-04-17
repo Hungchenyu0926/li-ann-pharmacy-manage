@@ -7,7 +7,7 @@ import { calculateDates, checkStatus, calculateAge } from '@/lib/dateUtils';
 const today = new Date().toISOString().split('T')[0];
 
 function enrichPatient(p: Patient): PatientWithDates {
-  const dates = calculateDates(p.firstPickupDate, p.prescriptionDays);
+  const dates = calculateDates(p.firstPickupDate);
   return {
     ...p,
     ...dates,
@@ -36,26 +36,32 @@ export default function ChronicPrescriptionsPage() {
   const [filter, setFilter] = useState<'all' | 'urgent' | 'active'>('all');
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
 
   // 新增表單
   const [form, setForm] = useState({
-    name: '', phone: '', dob: '', gender: '男',
-    firstPickupDate: today, prescriptionDays: 28, district: '',
+    name: '', phone: '', dob: '', district: '',
+    firstPickupDate: today, lineId: '',
   });
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
-    setTimeout(() => setToastMsg(''), 3000);
+    setTimeout(() => setToastMsg(''), 3500);
   };
 
   const loadPatients = useCallback(async () => {
-    const res = await fetch('/api/patients');
-    const data = await res.json();
-    if (data.success) {
-      setPatients((data.data as Patient[]).map(enrichPatient));
+    try {
+      const res = await fetch('/api/patients');
+      const data = await res.json();
+      if (data.success) {
+        setPatients((data.data as Patient[]).map(enrichPatient));
+      }
+    } catch {
+      // 網路錯誤時維持現有資料
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => { loadPatients(); }, [loadPatients]);
@@ -64,37 +70,77 @@ export default function ChronicPrescriptionsPage() {
     e.preventDefault();
     if (!form.name || !form.firstPickupDate) return;
     setSaving(true);
-    await fetch('/api/patients', {
+    const { returnVisit } = calculateDates(form.firstPickupDate);
+    const res = await fetch('/api/patients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, pickedSecond: false, pickedThird: false, completed: false }),
+      body: JSON.stringify({
+        ...form,
+        returnVisit,
+        pickedSecond: false, pickedThird: false, completed: false,
+      }),
     });
-    setForm({ name: '', phone: '', dob: '', gender: '男', firstPickupDate: today, prescriptionDays: 28, district: '' });
-    await loadPatients();
+    const data = await res.json();
+    if (data.success) {
+      setForm({ name: '', phone: '', dob: '', district: '', firstPickupDate: today, lineId: '' });
+      await loadPatients();
+      showToast(`✅ 已新增個案：${form.name}`);
+    } else {
+      showToast(`❌ 新增失敗：${data.error}`);
+    }
     setSaving(false);
-    showToast(`✅ 已新增個案：${form.name}`);
   };
 
   const handleToggle = async (p: PatientWithDates, field: 'pickedSecond' | 'pickedThird' | 'completed') => {
-    const updated = { ...p, [field]: !p[field] };
-    setPatients(prev => prev.map(x => x.rowIndex === p.rowIndex ? { ...enrichPatient(updated) } : x));
-    await fetch('/api/patients', {
+    const updated: Patient = {
+      rowIndex: p.rowIndex,
+      name: p.name, phone: p.phone, dob: p.dob, district: p.district,
+      firstPickupDate: p.firstPickupDate, pickedSecond: p.pickedSecond,
+      pickedThird: p.pickedThird, returnVisit: p.returnVisit,
+      completed: p.completed, lineId: p.lineId,
+      [field]: !p[field],
+    };
+    // 樂觀更新 UI
+    setPatients(prev => prev.map(x =>
+      x.rowIndex === p.rowIndex ? enrichPatient(updated) : x
+    ));
+    const res = await fetch('/api/patients', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated),
     });
+    const data = await res.json();
+    if (!data.success) {
+      // 失敗時還原
+      await loadPatients();
+      showToast(`❌ 更新失敗：${data.error}`);
+    }
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    await fetch('/api/patients', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rowIndex: deleteTarget }),
-    });
-    setDeleteTarget(null);
-    await loadPatients();
-    showToast('已刪除個案');
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/patients', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowIndex: deleteTarget }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDeleteTarget(null);
+        await loadPatients();
+        showToast('已刪除個案');
+      } else {
+        showToast(`❌ 刪除失敗：${data.error}`);
+        setDeleteTarget(null);
+      }
+    } catch {
+      showToast('❌ 刪除失敗：網路錯誤');
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleNotify = async () => {
@@ -118,7 +164,8 @@ export default function ChronicPrescriptionsPage() {
   };
 
   const filtered = patients.filter(p => {
-    const matchSearch = !search || p.name.includes(search) || p.phone.includes(search) || p.district.includes(search);
+    const matchSearch = !search ||
+      p.name.includes(search) || p.phone.includes(search) || p.district.includes(search);
     const matchFilter =
       filter === 'all' ? true :
       filter === 'urgent' ? (p.status.includes('🔴') || p.status.includes('❌')) :
@@ -169,18 +216,21 @@ export default function ChronicPrescriptionsPage() {
       <div className="card">
         <h2 className="font-bold text-[#0e141b] mb-4 flex items-center gap-2">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#197fe6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M20 21a8 8 0 1 0-16 0"/>
+            <line x1="12" y1="12" x2="12" y2="16"/>
+            <line x1="10" y1="14" x2="14" y2="14"/>
           </svg>
           新增個案資料
         </h2>
-        <form onSubmit={handleAdd} className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <form onSubmit={handleAdd} className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           <div>
             <label>個案姓名 *</label>
             <input type="text" required placeholder="姓名" value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
           </div>
           <div>
-            <label>個案電話</label>
+            <label>電話</label>
             <input type="text" placeholder="電話" value={form.phone}
               onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
           </div>
@@ -190,31 +240,22 @@ export default function ChronicPrescriptionsPage() {
               onChange={e => setForm(f => ({ ...f, dob: e.target.value }))} />
           </div>
           <div>
-            <label>性別</label>
-            <select value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}>
-              <option>男</option>
-              <option>女</option>
-            </select>
-          </div>
-          <div>
             <label>居住里別</label>
             <input type="text" placeholder="例：大安里" value={form.district}
               onChange={e => setForm(f => ({ ...f, district: e.target.value }))} />
-          </div>
-          <div>
-            <label>處方天數</label>
-            <select value={form.prescriptionDays} onChange={e => setForm(f => ({ ...f, prescriptionDays: Number(e.target.value) }))}>
-              <option value={28}>28 天</option>
-              <option value={30}>30 天</option>
-            </select>
           </div>
           <div>
             <label>第一次領藥日 *</label>
             <input type="date" required value={form.firstPickupDate}
               onChange={e => setForm(f => ({ ...f, firstPickupDate: e.target.value }))} />
           </div>
-          <div className="col-span-2 md:col-span-3 lg:col-span-5 flex items-end">
-            <button type="submit" disabled={saving} className="btn-primary w-full md:w-auto">
+          <div>
+            <label>LINE ID（選填）</label>
+            <input type="text" placeholder="LINE ID" value={form.lineId}
+              onChange={e => setForm(f => ({ ...f, lineId: e.target.value }))} />
+          </div>
+          <div className="flex items-end">
+            <button type="submit" disabled={saving} className="btn-primary w-full">
               {saving ? '儲存中...' : '💾 新增個案'}
             </button>
           </div>
@@ -280,7 +321,7 @@ export default function ChronicPrescriptionsPage() {
                     <td className="text-xs text-[#4e7397]">
                       {p.thirdStart ? `${p.thirdStart.slice(5)} ~ ${p.thirdEnd.slice(5)}` : '-'}
                     </td>
-                    <td className="text-xs">{p.returnVisit}</td>
+                    <td className="text-xs">{p.returnVisit || '-'}</td>
                     <td><StatusBadge status={p.status} /></td>
                     <td className="text-center">
                       <input type="checkbox" checked={p.pickedSecond}
@@ -305,7 +346,10 @@ export default function ChronicPrescriptionsPage() {
                         className="text-[#94a3b8] hover:text-red-500 transition-colors p-1"
                         title="刪除">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                          <polyline points="3 6 5 6 21 6"/>
+                          <path d="M19 6l-1 14H6L5 6"/>
+                          <path d="M10 11v6M14 11v6"/>
+                          <path d="M9 6V4h6v2"/>
                         </svg>
                       </button>
                     </td>
@@ -321,11 +365,17 @@ export default function ChronicPrescriptionsPage() {
       {deleteTarget && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl">
-            <h3 className="font-bold text-[#0e141b] mb-2">確認刪除？</h3>
-            <p className="text-sm text-[#4e7397] mb-5">此操作不可復原，請確認後再刪除。</p>
+            <h3 className="font-bold text-[#0e141b] mb-2">確認刪除此個案？</h3>
+            <p className="text-sm text-[#4e7397] mb-5">此操作會從 Google Sheets 永久刪除該列，不可復原。</p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">取消</button>
-              <button onClick={handleDelete} className="btn-danger flex-1">確認刪除</button>
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting}
+                className="btn-secondary flex-1">
+                取消
+              </button>
+              <button onClick={handleDelete} disabled={deleting}
+                className="btn-danger flex-1">
+                {deleting ? '刪除中...' : '確認刪除'}
+              </button>
             </div>
           </div>
         </div>
