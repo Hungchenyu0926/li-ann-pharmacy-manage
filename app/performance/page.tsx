@@ -323,6 +323,7 @@ const emptyForm = {
   date: today, weather: '晴' as WeatherType,
   totalCustomers: 0, firstRxLijian: 0, rx23Lijian: 0,
   lijianRx: 0, externalRx: 0, dentalRx: 0, revenue: 0, salesCount: 0,
+  note: '',
 };
 
 // ════════════════════════════════════════════════════════════
@@ -431,7 +432,8 @@ export default function PerformancePage() {
     setEditTarget(r);
     setForm({ date: r.date, weather: r.weather, totalCustomers: r.totalCustomers,
       firstRxLijian: r.firstRxLijian, rx23Lijian: r.rx23Lijian, lijianRx: r.lijianRx,
-      externalRx: r.externalRx, dentalRx: r.dentalRx, revenue: r.revenue, salesCount: r.salesCount });
+      externalRx: r.externalRx, dentalRx: r.dentalRx, revenue: r.revenue, salesCount: r.salesCount,
+      note: r.note ?? '' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -630,6 +632,16 @@ export default function PerformancePage() {
                   ))}
                 </div>
               </div>
+              <div>
+                <label>備注</label>
+                <textarea
+                  rows={2}
+                  placeholder="例：休診、颱風假、特殊活動…"
+                  value={form.note}
+                  onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+                  className="w-full rounded-lg border border-[#dce8f8] bg-[#f8fafc] px-3 py-2 text-sm text-[#0e141b] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-[#197fe6] resize-none"
+                />
+              </div>
               <div className="flex gap-3 justify-end">
                 {editTarget && (
                   <button type="button" onClick={() => { setEditTarget(null); setForm(emptyForm); }} className="btn-secondary">取消編輯</button>
@@ -651,11 +663,11 @@ export default function PerformancePage() {
               <table>
                 <thead><tr>
                   <th>日期</th><th>天氣</th><th>總人數</th><th>立健首次</th><th>2/3次</th>
-                  <th>立健慢箋</th><th>外來慢箋</th><th>牙科箋</th><th>銷售</th><th>營業額</th><th></th>
+                  <th>立健慢箋</th><th>外來慢箋</th><th>牙科箋</th><th>銷售</th><th>營業額</th><th>備注</th><th></th>
                 </tr></thead>
                 <tbody>
                   {sortedRecords.length === 0 ? (
-                    <tr><td colSpan={11} className="text-center py-12 text-[#94a3b8]">尚無業績紀錄，請從上方新增</td></tr>
+                    <tr><td colSpan={12} className="text-center py-12 text-[#94a3b8]">尚無業績紀錄，請從上方新增</td></tr>
                   ) : sortedRecords.map(r => (
                     <tr key={r.rowIndex}>
                       <td className="font-medium whitespace-nowrap">{r.date}</td>
@@ -664,6 +676,7 @@ export default function PerformancePage() {
                       <td>{r.lijianRx}</td><td>{r.externalRx}</td><td>{r.dentalRx}</td>
                       <td>{r.salesCount}</td>
                       <td className="font-semibold text-[#197fe6] whitespace-nowrap">${r.revenue.toLocaleString()}</td>
+                      <td className="text-xs text-[#94a3b8] max-w-[8rem] truncate" title={r.note}>{r.note}</td>
                       <td>
                         <div className="flex gap-1">
                           <button onClick={() => handleEdit(r)} className="text-[#94a3b8] hover:text-[#197fe6] p-1" title="編輯">

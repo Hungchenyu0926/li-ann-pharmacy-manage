@@ -99,4 +99,5 @@ export interface PerformanceRecord {
   dentalRx: number;         // 牙科箋人數
   revenue: number;          // 營業額
   salesCount: number;       // 銷售人數
+  note: string;             // 備注（休診等）
 }

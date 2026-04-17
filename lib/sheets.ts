@@ -390,6 +390,7 @@ export async function getPerformanceRecords(): Promise<PerformanceRecord[]> {
           dentalRx:       parseInt(row[8]  ?? '0', 10) || 0,
           revenue:        parseFloat(row[9] ?? '0')    || 0,
           salesCount:     parseInt(row[10] ?? '0', 10) || 0,
+          note:           row[11] ?? '',
         });
       });
   });
@@ -409,6 +410,7 @@ export async function addPerformanceRecord(
     r.weather,
     r.totalCustomers, r.firstRxLijian, r.rx23Lijian,
     r.lijianRx, r.externalRx, r.dentalRx, r.revenue, r.salesCount,
+    r.note ?? '',
   ]);
 }
 
@@ -420,6 +422,7 @@ export async function updatePerformanceRecord(r: PerformanceRecord) {
     r.weather,
     r.totalCustomers, r.firstRxLijian, r.rx23Lijian,
     r.lijianRx, r.externalRx, r.dentalRx, r.revenue, r.salesCount,
+    r.note ?? '',
   ]);
 }
 
