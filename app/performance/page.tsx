@@ -502,11 +502,8 @@ export default function PerformancePage() {
     name: `${y}年`,
     color: yearColor(y),
     data: trendMetric === 'rx'
-      ? yearMonthly(records, y, 'firstRxLijian').map((v, i) =>
-          v + (yearMonthly(records, y, 'rx23Lijian')[i] || 0)
-          + (yearMonthly(records, y, 'lijianRx')[i] || 0)
-          + (yearMonthly(records, y, 'externalRx')[i] || 0)
-          + (yearMonthly(records, y, 'dentalRx')[i] || 0))
+      ? yearMonthly(records, y, 'lijianRx').map((v, i) =>
+          v + (yearMonthly(records, y, 'externalRx')[i] || 0))
       : yearMonthly(records, y, trendMetric),
   }));
 
@@ -929,7 +926,7 @@ export default function PerformancePage() {
                   const yRecs = records.filter(r => r.date.startsWith(String(y)));
                   const rev = yRecs.reduce((s, r) => s + r.revenue, 0);
                   const cust = yRecs.reduce((s, r) => s + r.totalCustomers, 0);
-                  const rxTotal = yRecs.reduce((s, r) => s + r.firstRxLijian + r.rx23Lijian + r.lijianRx + r.externalRx + r.dentalRx, 0);
+                  const rxTotal = yRecs.reduce((s, r) => s + r.lijianRx + r.externalRx, 0);
                   return (
                     <div key={y} className="card border-l-4 year-summary-card" style={{ borderLeftColor: yearColor(y) }}>
                       <p className="text-sm font-bold" style={{ color: yearColor(y) }}>{y} 年</p>
