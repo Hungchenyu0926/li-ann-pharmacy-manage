@@ -248,7 +248,7 @@ function computeHistStats(records: HistoricalDayRecord[]) {
   const all    = records;
   const days   = active.length;
   const totalRevenue   = active.reduce((s, r) => s + r.revenue, 0);
-  const totalCustomers = active.reduce((s, r) => s + r.totalCustomers, 0);
+  const totalCustomers = all.reduce((s, r) => s + r.totalCustomers, 0);  // 全月總人數（含休診日）
   const totalSales     = active.reduce((s, r) => s + r.salesCount, 0);
   const rxBreakdown = {
     firstRxLijian: active.reduce((s, r) => s + r.firstRxLijian, 0),
@@ -263,7 +263,7 @@ function computeHistStats(records: HistoricalDayRecord[]) {
   return {
     all, active, days,
     totalRevenue,   avgRevenue:   days ? Math.round(totalRevenue / days)   : 0,
-    totalCustomers, avgCustomers: days ? Math.round(totalCustomers / days) : 0,
+    totalCustomers, avgCustomers: days ? Math.round(totalCustomers / days) : 0,  // 日均以營業天數為基準
     totalSales,     rxBreakdown,  weatherDays,
   };
 }
