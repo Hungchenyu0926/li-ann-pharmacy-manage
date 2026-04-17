@@ -57,6 +57,7 @@ export default function DrugLendingPage() {
     note: '',
   });
   const [addingTx, setAddingTx] = useState(false);
+  const [editTxTarget, setEditTxTarget] = useState<Transaction | null>(null);
 
   // 刪除確認
   const [deleteTxTarget, setDeleteTxTarget] = useState<number | null>(null);
@@ -116,19 +117,47 @@ export default function DrugLendingPage() {
     showToast('已刪除藥品');
   };
 
+  const handleEditTx = (t: Transaction) => {
+    setEditTxTarget(t);
+    setTxForm({
+      date: t.date,
+      drugName: t.drugName,
+      dosage: t.dosage,
+      brand: t.brand,
+      type: t.type,
+      person: t.person,
+      quantity: t.quantity,
+      expectedReturn: t.expectedReturn,
+      note: t.note,
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleAddTx = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!txForm.drugName || !txForm.person || txForm.quantity <= 0) return;
     setAddingTx(true);
-    await fetch('/api/transactions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(txForm),
-    });
+    if (editTxTarget) {
+      // 更新模式
+      await fetch('/api/transactions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...txForm, rowIndex: editTxTarget.rowIndex }),
+      });
+      setEditTxTarget(null);
+      showToast(`✅ 已更新${txForm.type}紀錄：${txForm.drugName}`);
+    } else {
+      // 新增模式
+      await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(txForm),
+      });
+      showToast(`✅ 已新增${txForm.type}紀錄：${txForm.drugName}`);
+    }
     setTxForm(f => ({ ...f, person: '', quantity: 1, expectedReturn: '', note: '' }));
     await loadAll();
     setAddingTx(false);
-    showToast(`✅ 已新增${txForm.type}紀錄：${txForm.drugName}`);
   };
 
   const handleDeleteTx = async () => {
@@ -174,10 +203,21 @@ export default function DrugLendingPage() {
       {/* 新增借還紀錄（主要操作區） */}
       <div className="card">
         <h2 className="font-bold text-[#0e141b] mb-4 flex items-center gap-2">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#197fe6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          新增借還紀錄
+          {editTxTarget ? (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#197fe6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#197fe6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          )}
+          {editTxTarget ? '編輯借還紀錄' : '新增借還紀錄'}
+          {editTxTarget && (
+            <span className="ml-2 text-xs font-normal bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+              編輯中：{editTxTarget.drugName} {editTxTarget.dosage}
+            </span>
+          )}
         </h2>
         <form onSubmit={handleAddTx} className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {/* 類型 */}
@@ -268,9 +308,15 @@ export default function DrugLendingPage() {
               onChange={e => setTxForm(f => ({ ...f, note: e.target.value }))} />
           </div>
 
-          <div className="col-span-2 md:col-span-3 lg:col-span-4 flex justify-end">
+          <div className="col-span-2 md:col-span-3 lg:col-span-4 flex gap-3 justify-end">
+            {editTxTarget && (
+              <button type="button" className="btn-secondary"
+                onClick={() => { setEditTxTarget(null); setTxForm(f => ({ ...f, person: '', quantity: 1, expectedReturn: '', note: '' })); }}>
+                取消編輯
+              </button>
+            )}
             <button type="submit" disabled={addingTx} className="btn-primary">
-              {addingTx ? '儲存中...' : '💾 新增紀錄'}
+              {addingTx ? '儲存中...' : editTxTarget ? '💾 更新紀錄' : '💾 新增紀錄'}
             </button>
           </div>
         </form>
@@ -415,13 +461,22 @@ export default function DrugLendingPage() {
                       <td className="text-xs text-[#4e7397]">{t.expectedReturn || '-'}</td>
                       <td className="text-xs text-[#4e7397]">{t.note || '-'}</td>
                       <td>
-                        <button onClick={() => setDeleteTxTarget(t.rowIndex)}
-                          className="text-[#94a3b8] hover:text-red-500 transition-colors p-1"
-                          title="刪除">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
-                          </svg>
-                        </button>
+                        <div className="flex gap-1">
+                          <button onClick={() => handleEditTx(t)}
+                            className="text-[#94a3b8] hover:text-[#197fe6] transition-colors p-1"
+                            title="編輯">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                          </button>
+                          <button onClick={() => setDeleteTxTarget(t.rowIndex)}
+                            className="text-[#94a3b8] hover:text-red-500 transition-colors p-1"
+                            title="刪除">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                            </svg>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

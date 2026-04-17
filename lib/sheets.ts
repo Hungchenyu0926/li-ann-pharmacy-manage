@@ -217,6 +217,13 @@ export async function addTransaction(t: Omit<Transaction, 'rowIndex'>) {
   ]);
 }
 
+export async function updateTransaction(t: Transaction) {
+  await updateRow(TAB_TRANSACTIONS, t.rowIndex, [
+    t.date, t.drugName, t.dosage, t.brand, t.type,
+    t.person, t.quantity, t.expectedReturn, t.note,
+  ]);
+}
+
 export async function deleteTransaction(rowIndex: number) {
   await deleteRow(TAB_TRANSACTIONS, rowIndex);
 }

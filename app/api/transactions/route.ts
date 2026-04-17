@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTransactions, addTransaction, deleteTransaction } from '@/lib/sheets';
+import { getTransactions, addTransaction, updateTransaction, deleteTransaction } from '@/lib/sheets';
 import type { Transaction } from '@/types';
 
 export async function GET() {
@@ -19,6 +19,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('[POST /api/transactions]', err);
+    return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const body: Transaction = await req.json();
+    await updateTransaction(body);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('[PUT /api/transactions]', err);
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 });
   }
 }
