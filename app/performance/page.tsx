@@ -256,6 +256,7 @@ function computeHistStats(records: HistoricalDayRecord[]) {
     lijianRx:      active.reduce((s, r) => s + r.lijianRx, 0),
     externalRx:    active.reduce((s, r) => s + r.externalRx, 0),
     dentalRx:      active.reduce((s, r) => s + r.dentalRx, 0),
+    normalRx:      active.reduce((s, r) => s + Math.max(0, r.totalCustomers - r.lijianRx - r.externalRx - r.dentalRx), 0),
   };
   const weatherDays: Record<string, number> = {};
   active.forEach(r => { weatherDays[r.weather] = (weatherDays[r.weather] || 0) + 1; });
@@ -298,6 +299,7 @@ function computeMonthStats(records: PerformanceRecord[], month: string) {
     lijianRx:      filtered.reduce((s, r) => s + r.lijianRx, 0),
     externalRx:    filtered.reduce((s, r) => s + r.externalRx, 0),
     dentalRx:      filtered.reduce((s, r) => s + r.dentalRx, 0),
+    normalRx:      filtered.reduce((s, r) => s + Math.max(0, r.totalCustomers - r.lijianRx - r.externalRx - r.dentalRx), 0),
   };
   const weatherDays = { '晴': 0, '雨': 0, '颱風': 0, '大風': 0 } as Record<WeatherType, number>;
   filtered.forEach(r => { weatherDays[r.weather] = (weatherDays[r.weather] || 0) + 1; });
@@ -751,12 +753,14 @@ export default function PerformancePage() {
               {/* 慢箋 + 天氣 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="card">
-                  <h3 className="font-semibold text-[#0e141b] mb-4">💊 慢箋分類統計</h3>
+                  <h3 className="font-semibold text-[#0e141b] mb-4">💊 處方箋統計</h3>
                   <div className="space-y-3">
-                    {RX_FIELDS.map(f => {
-                      const count = stats.rxBreakdown[f.key];
-                      const total = Object.values(stats.rxBreakdown).reduce((a, b) => a + b, 0);
-                      const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                    {([
+                      ...RX_FIELDS,
+                      { key: 'normalRx', label: '一般箋', color: '#64748b' },
+                    ] as { key: string; label: string; color: string }[]).map(f => {
+                      const count = (stats.rxBreakdown as Record<string, number>)[f.key] ?? 0;
+                      const pct = stats.totalCustomers > 0 ? Math.round((count / stats.totalCustomers) * 100) : 0;
                       return (
                         <div key={f.key}>
                           <div className="flex justify-between text-sm mb-1">
@@ -770,7 +774,7 @@ export default function PerformancePage() {
                       );
                     })}
                     <div className="pt-2 border-t border-[#f1f5f9] text-sm text-[#4e7397]">
-                      合計：{Object.values(stats.rxBreakdown).reduce((a, b) => a + b, 0)} 人
+                      總人數：{stats.totalCustomers} 人
                     </div>
                   </div>
                 </div>
@@ -959,7 +963,7 @@ export default function PerformancePage() {
               </div>
             </div>
 
-            {/* 慢箋各類折線圖（固定顯示）*/}
+            {/* 慢箋各類 + 一般箋折線圖（固定顯示）*/}
             {trendYears.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rx-charts-grid">
                 {RX_FIELDS.map(f => {
@@ -977,6 +981,29 @@ export default function PerformancePage() {
                     </div>
                   );
                 })}
+                {/* 一般箋月趨勢 */}
+                {(() => {
+                  const normalSeries: ChartSeries[] = trendYears.map(y => {
+                    const tc  = yearMonthly(records, y, 'totalCustomers');
+                    const lj  = yearMonthly(records, y, 'lijianRx');
+                    const ext = yearMonthly(records, y, 'externalRx');
+                    const dnt = yearMonthly(records, y, 'dentalRx');
+                    return {
+                      name: `${y}年`,
+                      color: yearColor(y),
+                      data: tc.map((v, i) => Math.max(0, v - (lj[i] || 0) - (ext[i] || 0) - (dnt[i] || 0))),
+                    };
+                  });
+                  return (
+                    <div className="card chart-block">
+                      <h3 className="font-semibold text-[#0e141b] mb-1 text-sm">一般箋 月趨勢</h3>
+                      <Legend series={normalSeries} />
+                      <div className="mt-3">
+                        <MultiLineChart series={normalSeries} xLabels={MONTH_LABELS} height={160} />
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -1167,12 +1194,14 @@ export default function PerformancePage() {
                 {/* 慢箋分類 + 天氣分佈 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="card">
-                    <h4 className="font-semibold text-[#0e141b] mb-3 text-sm">💊 慢箋分類統計</h4>
+                    <h4 className="font-semibold text-[#0e141b] mb-3 text-sm">💊 處方箋統計</h4>
                     <div className="space-y-2.5">
-                      {RX_FIELDS.map(f => {
-                        const count = hStats.rxBreakdown[f.key];
-                        const total = Object.values(hStats.rxBreakdown).reduce((a, b) => a + b, 0);
-                        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                      {([
+                        ...RX_FIELDS,
+                        { key: 'normalRx', label: '一般箋', color: '#64748b' },
+                      ] as { key: string; label: string; color: string }[]).map(f => {
+                        const count = (hStats.rxBreakdown as Record<string, number>)[f.key] ?? 0;
+                        const pct = hStats.totalCustomers > 0 ? Math.round((count / hStats.totalCustomers) * 100) : 0;
                         return (
                           <div key={f.key}>
                             <div className="flex justify-between text-sm mb-1">
@@ -1186,7 +1215,7 @@ export default function PerformancePage() {
                         );
                       })}
                       <p className="text-xs text-[#94a3b8] pt-1 border-t border-[#f1f5f9]">
-                        合計：{Object.values(hStats.rxBreakdown).reduce((a, b) => a + b, 0)} 人
+                        總人數：{hStats.totalCustomers} 人
                       </p>
                     </div>
                   </div>
