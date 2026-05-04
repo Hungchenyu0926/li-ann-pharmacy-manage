@@ -173,13 +173,16 @@ export async function deletePatient(rowIndex: number) {
 
 export async function getDrugs(): Promise<Drug[]> {
   const rows = await readRange(`${TAB_DRUGS}!A2:D10000`);
-  return rows.map((row, i) => ({
-    rowIndex: i + 2,
-    name: row[0] ?? '',
-    dosage: row[1] ?? '',
-    brand: row[2] ?? '',
-    note: row[3] ?? '',
-  }));
+  return rows
+    .map((row, i) => ({ row, rowIndex: i + 2 }))
+    .filter(({ row }) => row[0])
+    .map(({ row, rowIndex }) => ({
+      rowIndex,
+      name: row[0] ?? '',
+      dosage: row[1] ?? '',
+      brand: row[2] ?? '',
+      note: row[3] ?? '',
+    }));
 }
 
 export async function addDrug(d: Omit<Drug, 'rowIndex'>) {
@@ -196,18 +199,21 @@ export async function deleteDrug(rowIndex: number) {
 
 export async function getTransactions(): Promise<Transaction[]> {
   const rows = await readRange(`${TAB_TRANSACTIONS}!A2:I10000`);
-  return rows.map((row, i) => ({
-    rowIndex: i + 2,
-    date: row[0] ?? '',
-    drugName: row[1] ?? '',
-    dosage: row[2] ?? '',
-    brand: row[3] ?? '',
-    type: (row[4] as '借出' | '歸還') ?? '借出',
-    person: row[5] ?? '',
-    quantity: parseInt(row[6] ?? '0', 10),
-    expectedReturn: row[7] ?? '',
-    note: row[8] ?? '',
-  }));
+  return rows
+    .map((row, i) => ({ row, rowIndex: i + 2 }))
+    .filter(({ row }) => row[0])
+    .map(({ row, rowIndex }) => ({
+      rowIndex,
+      date: row[0] ?? '',
+      drugName: row[1] ?? '',
+      dosage: row[2] ?? '',
+      brand: row[3] ?? '',
+      type: (row[4] as '借出' | '歸還') ?? '借出',
+      person: row[5] ?? '',
+      quantity: parseInt(row[6] ?? '0', 10),
+      expectedReturn: row[7] ?? '',
+      note: row[8] ?? '',
+    }));
 }
 
 export async function addTransaction(t: Omit<Transaction, 'rowIndex'>) {
