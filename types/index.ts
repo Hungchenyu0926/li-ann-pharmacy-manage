@@ -76,6 +76,65 @@ export interface HistoricalDayRecord {
   isHoliday: boolean;
 }
 
+// ===== 用藥安全評估 =====
+export type ManualEntryType = '中藥' | '保健食品' | '一般食品' | '西藥';
+
+export interface ManualEntry {
+  type: ManualEntryType;
+  name: string;
+  dosage?: string;
+  frequency?: string;
+}
+
+export interface ParsedMedication {
+  name: string;
+  genericName?: string;
+  brandName?: string;
+  type: '西藥' | '中藥' | '保健食品' | '一般食品';
+  dosage?: string;
+  form?: string;
+  route?: string;
+  frequency?: string;
+  indication?: string;
+  source: 'parsed' | 'manual';
+}
+
+export interface DrugInteraction {
+  item1: string;
+  item2: string;
+  severity: 'minor' | 'moderate' | 'major' | 'contraindicated';
+  severityLabel: string;
+  description: string;
+  mechanism?: string;
+  management?: string;
+}
+
+export interface RiskContributor {
+  name: string;
+  score: number;
+  reason: string;
+}
+
+export interface RiskScore {
+  total: number;
+  level: 'low' | 'moderate' | 'high';
+  levelLabel: string;
+  contributors: RiskContributor[];
+  interpretation: string;
+}
+
+export interface DrugCheckResult {
+  parsedMedications: ParsedMedication[];
+  drugInteractions: DrugInteraction[];
+  foodInteractions: DrugInteraction[];
+  fallRisk: RiskScore;
+  anticholinergicBurden: RiskScore;
+  sedationRisk: RiskScore;
+  summary: string;
+  recommendations: string[];
+  disclaimer: string;
+}
+
 // ===== API 回應格式 =====
 export interface ApiResponse<T> {
   success: boolean;
