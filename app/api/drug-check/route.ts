@@ -196,7 +196,13 @@ export async function POST(req: NextRequest) {
     }
 
     const aiJson = await aiResp.json();
-    const rawText: string = aiJson.content?.[0]?.text ?? '';
+    // 從所有 text 區塊擷取文字（略過 thinking 等非文字區塊）
+    const rawText: string = Array.isArray(aiJson.content)
+      ? aiJson.content
+          .filter((b: { type?: string; text?: string }) => b?.type === 'text' && typeof b.text === 'string')
+          .map((b: { text: string }) => b.text)
+          .join('\n')
+      : '';
 
     let result;
     try {
