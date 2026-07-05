@@ -1,6 +1,15 @@
 import type { Metadata } from 'next';
+import { Noto_Sans_TC } from 'next/font/google';
 import './globals.css';
 import Sidebar from '@/components/Sidebar';
+
+const notoSansTC = Noto_Sans_TC({
+  subsets: ['latin'],
+  weight: ['400', '500', '700'],
+  display: 'swap',
+  variable: '--font-noto',
+  preload: false,
+});
 
 export const metadata: Metadata = {
   title: '立安藥局 管理系統',
@@ -13,7 +22,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-TW">
+    <html lang="zh-TW" className={notoSansTC.variable}>
       <body>
         <Sidebar />
         {/* 桌面版：左移 224px（側邊欄寬度）；手機版：上移 52px（Hamburger 列） */}

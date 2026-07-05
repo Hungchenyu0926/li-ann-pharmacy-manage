@@ -1,42 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import type { Patient, Transaction, Drug, DrugBalance } from '@/types';
 import { checkStatus } from '@/lib/dateUtils';
-
-function StatCard({
-  label,
-  value,
-  sub,
-  color = 'blue',
-  icon,
-}: {
-  label: string;
-  value: number | string;
-  sub?: string;
-  color?: 'blue' | 'green' | 'orange' | 'red';
-  icon: React.ReactNode;
-}) {
-  const colorMap = {
-    blue: 'bg-blue-50 text-blue-600',
-    green: 'bg-green-50 text-green-600',
-    orange: 'bg-orange-50 text-orange-600',
-    red: 'bg-red-50 text-red-600',
-  };
-  return (
-    <div className="card flex items-center gap-4">
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${colorMap[color]}`}>
-        {icon}
-      </div>
-      <div>
-        <p className="text-xs text-[#4e7397] mb-0.5">{label}</p>
-        <p className="text-2xl font-bold text-[#0e141b] leading-none">{value}</p>
-        {sub && <p className="text-xs text-[#94a3b8] mt-0.5">{sub}</p>}
-      </div>
-    </div>
-  );
-}
+import { StatCard, LoadingBlock, EmptyState, SectionHeader } from '@/components/ui';
 
 export default function DashboardPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -104,15 +71,7 @@ export default function DashboardPage() {
     .map(p => ({ ...p, status: checkStatus(p) }));
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64 text-[#4e7397]">
-        <svg className="animate-spin w-6 h-6 mr-2" viewBox="0 0 24 24" fill="none">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-        </svg>
-        讀取資料中...
-      </div>
-    );
+    return <LoadingBlock />;
   }
 
   return (
@@ -176,17 +135,9 @@ export default function DashboardPage() {
 
         {/* 需要注意的慢箋 */}
         <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-[#0e141b]">需要處理的慢箋</h2>
-            <Link href="/chronic-prescriptions" className="text-xs text-primary hover:underline">
-              查看全部 →
-            </Link>
-          </div>
+          <SectionHeader title="需要處理的慢箋" href="/chronic-prescriptions" />
           {urgentList.length === 0 ? (
-            <div className="text-center py-8 text-[#94a3b8] text-sm">
-              <div className="text-2xl mb-2">✅</div>
-              目前沒有需要緊急處理的個案
-            </div>
+            <EmptyState icon="✅" message="目前沒有需要緊急處理的個案" />
           ) : (
             <div className="space-y-2">
               {urgentList.map((p) => (
@@ -204,17 +155,9 @@ export default function DashboardPage() {
 
         {/* 最近借還紀錄 */}
         <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-[#0e141b]">最近借還紀錄</h2>
-            <Link href="/drug-lending" className="text-xs text-primary hover:underline">
-              查看全部 →
-            </Link>
-          </div>
+          <SectionHeader title="最近借還紀錄" href="/drug-lending" />
           {recentTx.length === 0 ? (
-            <div className="text-center py-8 text-[#94a3b8] text-sm">
-              <div className="text-2xl mb-2">📋</div>
-              尚無借還紀錄
-            </div>
+            <EmptyState icon="📋" message="尚無借還紀錄" />
           ) : (
             <div className="space-y-2">
               {recentTx.map((t) => (

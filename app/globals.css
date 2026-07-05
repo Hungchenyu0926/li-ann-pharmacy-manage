@@ -2,15 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
-
-:root {
-  --font-noto: 'Noto Sans TC', sans-serif;
-}
-
 html,
 body {
-  font-family: 'Noto Sans TC', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-noto), 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background-color: #f6f7f8;
   color: #0e141b;
 }
