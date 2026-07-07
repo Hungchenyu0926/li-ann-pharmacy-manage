@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import type { DrugCheckResult, ManualEntryType, ParsedMedication, DrugInteraction, RiskScore } from '@/types';
+import { downloadDrugCheckReport } from '@/lib/drugCheckReport';
 
 interface ManualEntry {
   id: number;
@@ -123,12 +124,40 @@ export default function DrugCheckPage() {
     reader.readAsDataURL(file);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 台灣醫療系統匯出的 CSV/TXT 常為 Big5 編碼；先以 UTF-8 嚴格解碼，失敗再改用 Big5
+  const decodeText = (buffer: ArrayBuffer): string => {
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    } catch {
+      return new TextDecoder('big5').decode(buffer);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setPastedText((ev.target?.result as string) ?? '');
-    reader.readAsText(file, 'UTF-8');
+    setError(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const isExcel = /\.(xlsx|xls)$/i.test(file.name)
+        // xlsx 實為 zip 壓縮檔，開頭固定為 "PK"
+        || new Uint8Array(buffer.slice(0, 2)).every((b, i) => b === [0x50, 0x4b][i]);
+      if (isExcel) {
+        const XLSX = await import('xlsx');
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const text = wb.SheetNames
+          .map(name => XLSX.utils.sheet_to_csv(wb.Sheets[name]).trim())
+          .filter(Boolean)
+          .join('\n\n');
+        setPastedText(text);
+      } else {
+        setPastedText(decodeText(buffer));
+      }
+    } catch {
+      setError('檔案讀取失敗，請確認檔案格式（支援 .txt / .csv / .xlsx / .xls）。');
+    } finally {
+      if (fileRef.current) fileRef.current.value = '';
+    }
   };
 
   const addManual = () => {
@@ -234,7 +263,7 @@ Atorvastatin 20mg  睡前1顆`}
               className="w-full border border-[#e7edf3] rounded-xl px-4 py-3 text-sm text-[#0e141b] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none font-mono"
             />
             <div className="flex items-center gap-2">
-              <input ref={fileRef} type="file" accept=".txt,.csv" className="hidden" onChange={handleFileUpload} />
+              <input ref={fileRef} type="file" accept=".txt,.csv,.xlsx,.xls" className="hidden" onChange={handleFileUpload} />
               <button
                 onClick={() => fileRef.current?.click()}
                 className="flex items-center gap-1.5 text-sm text-[#4e7397] hover:text-primary px-3 py-1.5 border border-[#e7edf3] rounded-lg hover:bg-primary-light transition-colors"
@@ -242,7 +271,7 @@ Atorvastatin 20mg  睡前1顆`}
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                 </svg>
-                上傳文字檔 (.txt/.csv)
+                上傳檔案 (.txt/.csv/.xlsx)
               </button>
               {pastedText && (
                 <button onClick={() => setPastedText('')} className="text-xs text-[#94a3b8] hover:text-red-500 transition-colors">
@@ -383,6 +412,19 @@ Atorvastatin 20mg  睡前1顆`}
       {/* ── Results ── */}
       {result && (
         <div id="drug-check-result" className="space-y-5">
+          {/* Download report */}
+          <div className="flex justify-end">
+            <button
+              onClick={() => downloadDrugCheckReport(result)}
+              className="flex items-center gap-1.5 text-sm font-medium text-primary px-4 py-2 border border-primary/30 rounded-lg hover:bg-primary-light transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              下載評估報告
+            </button>
+          </div>
+
           {/* Summary banner */}
           <div className={`rounded-2xl p-5 border ${
             hasMajor || highRiskCount >= 2
