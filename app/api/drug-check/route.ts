@@ -54,6 +54,16 @@ const SYSTEM_PROMPT = `你是一位專業臨床藥師AI助理，協助藥師進�
 - 諾和靈 = insulin NPH
 - 胰磁胰 = insulin glargine
 
+【個案化風險調整】若使用者提供年齡、性別或檢驗數據，必須據以調整評估：
+- 年齡 ≥65 歲：全面適用 Beers Criteria 2023 長者潛在不適當用藥標準；BZD/Z-drugs、抗膽鹼藥、opioids 於長者的跌倒與認知風險需加重說明；相關風險的 interpretation 與 recommendations 必須明確提及個案年齡
+- 腎功能（eGFR/CrCl/Scr）：檢視經腎排除藥物之劑量適當性，例如 metformin（eGFR<30 禁用、30-45 應減量）、NOAC、gabapentin/pregabalin、sulfonylurea、digoxin、allopurinol 等；發現劑量疑慮時列入 recommendations
+- 肝功能（ALT/AST/Bilirubin）異常：注意 statin、acetaminophen、經肝代謝藥物之風險
+- 電解質：低血鉀 + digoxin/利尿劑、高血鉀 + ACEI/ARB/spironolactone、低血鈉 + SSRI/thiazide 等組合需提出警示
+- INR：使用 warfarin 且 INR 異常時，相關交互作用嚴重度與處置建議需對應調整
+- 血糖（HbA1c/AC glucose）：與降血糖藥、易致低血糖組合對照評估跌倒風險
+- 性別：納入相關考量（如女性長者骨鬆骨折風險較高、肌酸酐換算腎功能差異）
+- 未提供的項目以一般成人標準評估，不可虛構檢驗數值
+
 常見中藥/保健食品交互作用：
 - 丹參 + warfarin/aspirin：增強抗凝血作用（major）
 - 人參 + warfarin：可能增強抗凝（moderate）
@@ -135,7 +145,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { text, imageBase64, imageMimeType, manualEntries } = body;
+    const { text, imageBase64, imageMimeType, manualEntries, patientAge, patientGender, labData } = body;
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -155,6 +165,13 @@ export async function POST(req: NextRequest) {
     }
 
     let userText = '請分析以下用藥資料：\n\n';
+    if (patientAge != null || patientGender || labData?.trim()) {
+      userText += '【個案資料】\n';
+      if (patientAge != null)  userText += `- 年齡：${patientAge} 歲\n`;
+      if (patientGender)       userText += `- 性別：${patientGender}\n`;
+      if (labData?.trim())     userText += `- 檢驗數據：\n${labData.trim()}\n`;
+      userText += '\n';
+    }
     if (text?.trim()) userText += `【用藥清單文字】\n${text.trim()}\n\n`;
     if (imageBase64)   userText += '【用藥截圖】（見上方圖片）\n\n';
     if (manualEntries?.length) {

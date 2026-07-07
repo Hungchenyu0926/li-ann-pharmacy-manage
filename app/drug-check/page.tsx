@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import type { DrugCheckResult, ManualEntryType, ParsedMedication, DrugInteraction, RiskScore } from '@/types';
-import { downloadDrugCheckReport } from '@/lib/drugCheckReport';
+import { downloadDrugCheckReport, calcAge, type PatientInfo } from '@/lib/drugCheckReport';
 
 interface ManualEntry {
   id: number;
@@ -97,6 +97,7 @@ function InteractionCard({ ix, label }: { ix: DrugInteraction; label: string }) 
 }
 
 export default function DrugCheckPage() {
+  const [patient, setPatient] = useState<PatientInfo>({ name: '', birthDate: '', gender: '', phone: '', idNumber: '', labData: '' });
   const [inputMode, setInputMode] = useState<'text' | 'image'>('text');
   const [pastedText, setPastedText] = useState('');
   const [uploadedImage, setUploadedImage] = useState<{ base64: string; mimeType: string; preview: string } | null>(null);
@@ -170,6 +171,10 @@ export default function DrugCheckPage() {
   const removeManual = (id: number) => setManualEntries(prev => prev.filter(e => e.id !== id));
 
   const handleAnalyze = async () => {
+    if (!patient.name.trim() || !patient.birthDate) {
+      setError('請填寫個案基本資料（姓名與出生年月日為必填）。');
+      return;
+    }
     if (!pastedText.trim() && !uploadedImage && manualEntries.length === 0) {
       setError('請輸入用藥資料後再分析。');
       return;
@@ -186,6 +191,10 @@ export default function DrugCheckPage() {
           imageBase64:  uploadedImage?.base64,
           imageMimeType: uploadedImage?.mimeType,
           manualEntries: manualEntries.map(({ type, name, dosage, frequency }) => ({ type, name, dosage, frequency })),
+          // 只傳臨床必要資訊給 AI，不含姓名/電話/身分證等個資
+          patientAge: calcAge(patient.birthDate) ?? undefined,
+          patientGender: patient.gender || undefined,
+          labData: patient.labData?.trim() || undefined,
         }),
       });
       const data = await resp.json();
@@ -227,6 +236,73 @@ export default function DrugCheckPage() {
       </div>
 
       {/* ── Input section ── */}
+      {/* ── Patient info ── */}
+      <div className="bg-white border border-[#e7edf3] rounded-2xl p-5 mb-5 space-y-4">
+        <h2 className="font-semibold text-[#0e141b]">個案基本資料</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <label className="block">
+            <span className="text-xs font-medium text-[#4e7397]">姓名 <span className="text-red-500">*</span></span>
+            <input
+              value={patient.name}
+              onChange={e => setPatient(p => ({ ...p, name: e.target.value }))}
+              placeholder="王小明"
+              className="mt-1 w-full border border-[#e7edf3] rounded-lg px-3 py-2 text-sm text-[#0e141b] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-[#4e7397]">出生年月日 <span className="text-red-500">*</span></span>
+            <input
+              type="date"
+              value={patient.birthDate}
+              onChange={e => setPatient(p => ({ ...p, birthDate: e.target.value }))}
+              className="mt-1 w-full border border-[#e7edf3] rounded-lg px-3 py-2 text-sm text-[#0e141b] focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-[#4e7397]">性別</span>
+            <select
+              value={patient.gender}
+              onChange={e => setPatient(p => ({ ...p, gender: e.target.value }))}
+              className="mt-1 w-full border border-[#e7edf3] rounded-lg px-3 py-2 text-sm text-[#0e141b] focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">未填寫</option>
+              <option value="男">男</option>
+              <option value="女">女</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-[#4e7397]">電話</span>
+            <input
+              type="tel"
+              value={patient.phone}
+              onChange={e => setPatient(p => ({ ...p, phone: e.target.value }))}
+              placeholder="0912-345-678"
+              className="mt-1 w-full border border-[#e7edf3] rounded-lg px-3 py-2 text-sm text-[#0e141b] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-[#4e7397]">身分證字號</span>
+            <input
+              value={patient.idNumber}
+              onChange={e => setPatient(p => ({ ...p, idNumber: e.target.value.toUpperCase() }))}
+              placeholder="A123456789"
+              maxLength={10}
+              className="mt-1 w-full border border-[#e7edf3] rounded-lg px-3 py-2 text-sm text-[#0e141b] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </label>
+        </div>
+        <label className="block">
+          <span className="text-xs font-medium text-[#4e7397]">檢驗數據（AI 將依此調整風險評估與劑量建議）</span>
+          <textarea
+            value={patient.labData}
+            onChange={e => setPatient(p => ({ ...p, labData: e.target.value }))}
+            rows={2}
+            placeholder="例：eGFR 45、Scr 1.4、K 3.2、ALT 80、HbA1c 8.5%、INR 2.8"
+            className="mt-1 w-full border border-[#e7edf3] rounded-lg px-3 py-2 text-sm text-[#0e141b] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+          />
+        </label>
+      </div>
+
       <div className="bg-white border border-[#e7edf3] rounded-2xl p-5 mb-5 space-y-5">
         <h2 className="font-semibold text-[#0e141b]">輸入用藥資料</h2>
 
@@ -415,7 +491,7 @@ Atorvastatin 20mg  睡前1顆`}
           {/* Download report */}
           <div className="flex justify-end">
             <button
-              onClick={() => downloadDrugCheckReport(result)}
+              onClick={() => downloadDrugCheckReport(result, patient)}
               className="flex items-center gap-1.5 text-sm font-medium text-primary px-4 py-2 border border-primary/30 rounded-lg hover:bg-primary-light transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

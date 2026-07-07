@@ -1,5 +1,22 @@
 import type { DrugCheckResult, DrugInteraction, RiskScore } from '@/types';
 
+export interface PatientInfo {
+  name: string;       // 必填
+  birthDate: string;  // 必填，YYYY-MM-DD
+  gender?: string;
+  phone?: string;
+  idNumber?: string;
+  labData?: string;   // 檢驗數據（自由文字，如 eGFR、Scr、K、ALT、HbA1c、INR）
+}
+
+export function calcAge(birthDate: string, at: Date = new Date()): number | null {
+  const b = new Date(birthDate);
+  if (isNaN(b.getTime())) return null;
+  let age = at.getFullYear() - b.getFullYear();
+  if (at.getMonth() < b.getMonth() || (at.getMonth() === b.getMonth() && at.getDate() < b.getDate())) age--;
+  return age;
+}
+
 const esc = (s: string | undefined | null): string =>
   (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -47,9 +64,10 @@ function riskBlock(title: string, risk: RiskScore | undefined): string {
     </div>`;
 }
 
-export function buildDrugCheckReportHtml(result: DrugCheckResult, generatedAt: Date): string {
+export function buildDrugCheckReportHtml(result: DrugCheckResult, patient: PatientInfo, generatedAt: Date): string {
   const time = generatedAt.toLocaleString('zh-TW', { hour12: false });
   const meds = result.parsedMedications ?? [];
+  const age = calcAge(patient.birthDate, generatedAt);
   return `<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -78,6 +96,26 @@ export function buildDrugCheckReportHtml(result: DrugCheckResult, generatedAt: D
 <body>
 <h1>立安藥局　用藥安全評估報告</h1>
 <p class="meta">報告產生時間：${esc(time)}</p>
+
+<h2>個案基本資料</h2>
+<table>
+  <tbody>
+    <tr>
+      <th>姓名</th><td>${esc(patient.name)}</td>
+      <th>出生年月日</th><td>${esc(patient.birthDate)}${age !== null ? `（${age} 歲）` : ''}</td>
+    </tr>
+    <tr>
+      <th>性別</th><td>${esc(patient.gender) || '—'}</td>
+      <th>電話</th><td>${esc(patient.phone) || '—'}</td>
+    </tr>
+    <tr>
+      <th>身分證字號</th><td colspan="3">${esc(patient.idNumber) || '—'}</td>
+    </tr>
+    <tr>
+      <th>檢驗數據</th><td colspan="3" style="white-space:pre-wrap">${esc(patient.labData?.trim()) || '—'}</td>
+    </tr>
+  </tbody>
+</table>
 
 <h2>整體評估摘要</h2>
 <div class="summary">
@@ -119,16 +157,18 @@ ${riskBlock('鎮靜昏睡風險', result.sedationRisk)}
 </html>`;
 }
 
-export function downloadDrugCheckReport(result: DrugCheckResult): void {
+export function downloadDrugCheckReport(result: DrugCheckResult, patient: PatientInfo): void {
   const now = new Date();
-  const html = buildDrugCheckReportHtml(result, now);
+  const html = buildDrugCheckReportHtml(result, patient, now);
   const pad = (n: number) => String(n).padStart(2, '0');
   const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+  // 檔名去除路徑非法字元
+  const safeName = patient.name.trim().replace(/[\\/:*?"<>|]/g, '');
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `用藥安全評估報告_${stamp}.html`;
+  a.download = `用藥安全評估報告_${safeName}_${stamp}.html`;
   document.body.appendChild(a);
   a.click();
   a.remove();
