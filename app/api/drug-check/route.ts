@@ -145,7 +145,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { text, imageBase64, imageMimeType, manualEntries, patientAge, patientGender, labData } = body;
+    const { text, imageBase64, imageMimeType, manualEntries, patientAge, patientGender, labData, labImageBase64, labImageMimeType } = body;
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -158,22 +158,31 @@ export async function POST(req: NextRequest) {
     const contentParts: object[] = [];
 
     if (imageBase64 && imageMimeType) {
+      contentParts.push({ type: 'text', text: '下圖為【用藥截圖】：' });
       contentParts.push({
         type: 'image',
         source: { type: 'base64', media_type: imageMimeType, data: imageBase64 },
       });
     }
+    if (labImageBase64 && labImageMimeType) {
+      contentParts.push({ type: 'text', text: '下圖為【檢驗數據截圖】：' });
+      contentParts.push({
+        type: 'image',
+        source: { type: 'base64', media_type: labImageMimeType, data: labImageBase64 },
+      });
+    }
 
     let userText = '請分析以下用藥資料：\n\n';
-    if (patientAge != null || patientGender || labData?.trim()) {
+    if (patientAge != null || patientGender || labData?.trim() || labImageBase64) {
       userText += '【個案資料】\n';
       if (patientAge != null)  userText += `- 年齡：${patientAge} 歲\n`;
       if (patientGender)       userText += `- 性別：${patientGender}\n`;
       if (labData?.trim())     userText += `- 檢驗數據：\n${labData.trim()}\n`;
+      if (labImageBase64)      userText += '- 檢驗數據截圖：見上方標示【檢驗數據截圖】之圖片，請解讀其中所有檢驗項目與數值\n';
       userText += '\n';
     }
     if (text?.trim()) userText += `【用藥清單文字】\n${text.trim()}\n\n`;
-    if (imageBase64)   userText += '【用藥截圖】（見上方圖片）\n\n';
+    if (imageBase64)   userText += '【用藥截圖】（見上方標示【用藥截圖】之圖片）\n\n';
     if (manualEntries?.length) {
       userText += '【手動輸入項目】\n';
       for (const e of manualEntries) {

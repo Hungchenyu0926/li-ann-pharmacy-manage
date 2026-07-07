@@ -96,11 +96,15 @@ function InteractionCard({ ix, label }: { ix: DrugInteraction; label: string }) 
   );
 }
 
+type UploadedImage = { base64: string; mimeType: string; preview: string };
+
 export default function DrugCheckPage() {
   const [patient, setPatient] = useState<PatientInfo>({ name: '', birthDate: '', gender: '', phone: '', idNumber: '', labData: '' });
   const [inputMode, setInputMode] = useState<'text' | 'image'>('text');
   const [pastedText, setPastedText] = useState('');
-  const [uploadedImage, setUploadedImage] = useState<{ base64: string; mimeType: string; preview: string } | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<UploadedImage | null>(null);
+  const [labInputMode, setLabInputMode] = useState<'text' | 'image'>('text');
+  const [labImage, setLabImage] = useState<UploadedImage | null>(null);
   const [manualEntries, setManualEntries] = useState<ManualEntry[]>([]);
   const [manualForm, setManualForm] = useState({ type: '中藥' as ManualEntryType, name: '', dosage: '', frequency: '' });
   const [nextId, setNextId] = useState(1);
@@ -109,20 +113,30 @@ export default function DrugCheckPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'meds' | 'interactions' | 'risks'>('meds');
 
-  const fileRef  = useRef<HTMLInputElement>(null);
-  const imageRef = useRef<HTMLInputElement>(null);
+  const fileRef     = useRef<HTMLInputElement>(null);
+  const imageRef    = useRef<HTMLInputElement>(null);
+  const labFileRef  = useRef<HTMLInputElement>(null);
+  const labImageRef = useRef<HTMLInputElement>(null);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const readImageFile = (file: File, setter: (img: UploadedImage) => void) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const dataUrl = ev.target?.result as string;
       const [header, base64] = dataUrl.split(',');
       const mimeType = header.match(/:(.*?);/)?.[1] ?? 'image/png';
-      setUploadedImage({ base64, mimeType, preview: dataUrl });
+      setter({ base64, mimeType, preview: dataUrl });
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) readImageFile(file, setUploadedImage);
+  };
+
+  const handleLabImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) readImageFile(file, setLabImage);
   };
 
   // 台灣醫療系統匯出的 CSV/TXT 常為 Big5 編碼；先以 UTF-8 嚴格解碼，失敗再改用 Big5
@@ -134,30 +148,47 @@ export default function DrugCheckPage() {
     }
   };
 
+  // .txt/.csv/.xlsx/.xls → 純文字（xlsx 各工作表轉 CSV 後串接）
+  const readFileToText = async (file: File): Promise<string> => {
+    const buffer = await file.arrayBuffer();
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name)
+      // xlsx 實為 zip 壓縮檔，開頭固定為 "PK"
+      || new Uint8Array(buffer.slice(0, 2)).every((b, i) => b === [0x50, 0x4b][i]);
+    if (isExcel) {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.read(buffer, { type: 'array' });
+      return wb.SheetNames
+        .map(name => XLSX.utils.sheet_to_csv(wb.Sheets[name]).trim())
+        .filter(Boolean)
+        .join('\n\n');
+    }
+    return decodeText(buffer);
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setError(null);
     try {
-      const buffer = await file.arrayBuffer();
-      const isExcel = /\.(xlsx|xls)$/i.test(file.name)
-        // xlsx 實為 zip 壓縮檔，開頭固定為 "PK"
-        || new Uint8Array(buffer.slice(0, 2)).every((b, i) => b === [0x50, 0x4b][i]);
-      if (isExcel) {
-        const XLSX = await import('xlsx');
-        const wb = XLSX.read(buffer, { type: 'array' });
-        const text = wb.SheetNames
-          .map(name => XLSX.utils.sheet_to_csv(wb.Sheets[name]).trim())
-          .filter(Boolean)
-          .join('\n\n');
-        setPastedText(text);
-      } else {
-        setPastedText(decodeText(buffer));
-      }
+      setPastedText(await readFileToText(file));
     } catch {
       setError('檔案讀取失敗，請確認檔案格式（支援 .txt / .csv / .xlsx / .xls）。');
     } finally {
       if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const handleLabFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    try {
+      const text = await readFileToText(file);
+      setPatient(p => ({ ...p, labData: text }));
+    } catch {
+      setError('檢驗數據檔案讀取失敗，請確認檔案格式（支援 .txt / .csv / .xlsx / .xls）。');
+    } finally {
+      if (labFileRef.current) labFileRef.current.value = '';
     }
   };
 
@@ -195,6 +226,8 @@ export default function DrugCheckPage() {
           patientAge: calcAge(patient.birthDate) ?? undefined,
           patientGender: patient.gender || undefined,
           labData: patient.labData?.trim() || undefined,
+          labImageBase64:  labImage?.base64,
+          labImageMimeType: labImage?.mimeType,
         }),
       });
       const data = await resp.json();
@@ -291,16 +324,101 @@ export default function DrugCheckPage() {
             />
           </label>
         </div>
-        <label className="block">
-          <span className="text-xs font-medium text-[#4e7397]">檢驗數據（AI 將依此調整風險評估與劑量建議）</span>
-          <textarea
-            value={patient.labData}
-            onChange={e => setPatient(p => ({ ...p, labData: e.target.value }))}
-            rows={2}
-            placeholder="例：eGFR 45、Scr 1.4、K 3.2、ALT 80、HbA1c 8.5%、INR 2.8"
-            className="mt-1 w-full border border-[#e7edf3] rounded-lg px-3 py-2 text-sm text-[#0e141b] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-          />
-        </label>
+      </div>
+
+      {/* ── Lab data (multi-modal) ── */}
+      <div className="bg-white border border-[#e7edf3] rounded-2xl p-5 mb-5 space-y-4">
+        <h2 className="font-semibold text-[#0e141b]">
+          檢驗數據
+          <span className="ml-2 text-xs font-normal text-[#4e7397]">（選填，AI 將依此調整風險評估與劑量建議）</span>
+        </h2>
+
+        {/* Lab mode tabs */}
+        <div className="flex gap-1 bg-[#f1f5f9] p-1 rounded-xl w-fit">
+          {([['text', '貼上文字/上傳檔案'], ['image', '上傳截圖']] as const).map(([mode, label]) => (
+            <button
+              key={mode}
+              onClick={() => setLabInputMode(mode)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                labInputMode === mode
+                  ? 'bg-white text-[#0e141b] shadow-sm'
+                  : 'text-[#4e7397] hover:text-[#0e141b]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Lab text mode */}
+        {labInputMode === 'text' && (
+          <div className="space-y-3">
+            <textarea
+              value={patient.labData}
+              onChange={e => setPatient(p => ({ ...p, labData: e.target.value }))}
+              rows={4}
+              placeholder={`從健保醫療資訊雲端系統複製檢驗數據表格貼入此處，或直接輸入。
+
+例：eGFR 45、Scr 1.4、K 3.2、ALT 80、HbA1c 8.5%、INR 2.8`}
+              className="w-full border border-[#e7edf3] rounded-xl px-4 py-3 text-sm text-[#0e141b] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none font-mono"
+            />
+            <div className="flex items-center gap-2">
+              <input ref={labFileRef} type="file" accept=".txt,.csv,.xlsx,.xls" className="hidden" onChange={handleLabFileUpload} />
+              <button
+                onClick={() => labFileRef.current?.click()}
+                className="flex items-center gap-1.5 text-sm text-[#4e7397] hover:text-primary px-3 py-1.5 border border-[#e7edf3] rounded-lg hover:bg-primary-light transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                上傳檔案 (.txt/.csv/.xlsx)
+              </button>
+              {patient.labData && (
+                <button onClick={() => setPatient(p => ({ ...p, labData: '' }))} className="text-xs text-[#94a3b8] hover:text-red-500 transition-colors">
+                  清除
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Lab image mode */}
+        {labInputMode === 'image' && (
+          <div className="space-y-3">
+            <input ref={labImageRef} type="file" accept="image/*" className="hidden" onChange={handleLabImageUpload} />
+            {labImage ? (
+              <div className="relative">
+                <img
+                  src={labImage.preview}
+                  alt="檢驗數據截圖"
+                  className="max-h-96 rounded-xl border border-[#e7edf3] object-contain w-full"
+                />
+                <button
+                  onClick={() => { setLabImage(null); if (labImageRef.current) labImageRef.current.value = ''; }}
+                  className="absolute top-2 right-2 bg-white border border-[#e7edf3] rounded-full p-1.5 text-[#4e7397] hover:text-red-500 shadow transition-colors"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => labImageRef.current?.click()}
+                className="w-full border-2 border-dashed border-[#e7edf3] rounded-xl py-8 flex flex-col items-center gap-3 text-[#4e7397] hover:border-primary hover:bg-primary-light transition-colors"
+              >
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <div className="text-center">
+                  <p className="font-medium">點擊上傳檢驗數據截圖</p>
+                  <p className="text-xs mt-0.5">支援 JPG、PNG、WEBP</p>
+                </div>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="bg-white border border-[#e7edf3] rounded-2xl p-5 mb-5 space-y-5">
